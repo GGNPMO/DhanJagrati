@@ -1,7 +1,7 @@
 namespace DhanJagrati.Api;
 
 public sealed record Member(
-    int Id,
+    long Id,
     string MemberNo,
     string FullName,
     string Phone,
@@ -16,9 +16,9 @@ public sealed record Member(
     string KycStatus = "Verified");
 
 public sealed record Loan(
-    int Id,
+    long Id,
     string LoanNo,
-    int MemberId,
+    long MemberId,
     string MemberName,
     string Product,
     decimal SanctionedAmount,
@@ -29,9 +29,9 @@ public sealed record Loan(
     string Status);
 
 public sealed record LoanApplication(
-    int Id,
+    long Id,
     string ApplicationNo,
-    int MemberId,
+    long MemberId,
     string MemberName,
     string Product,
     decimal AmountRequested,
@@ -42,7 +42,7 @@ public sealed record LoanApplication(
     string RelationshipManager);
 
 public sealed record Collection(
-    int Id,
+    long Id,
     string ReceiptNo,
     string LoanNo,
     string MemberName,
@@ -62,7 +62,7 @@ public sealed record CreateMemberRequest(
     string? KycStatus = null);
 
 public sealed record CreateLoanRequest(
-    int MemberId,
+    long MemberId,
     string Product,
     decimal Amount,
     int TenureMonths,
@@ -77,7 +77,8 @@ public sealed record CreateCollectionRequest(
     decimal Amount,
     DateOnly PaidOn,
     string Mode,
-    string Reference);
+    string Reference,
+    Guid? IdempotencyKey = null);
 
 public sealed record CreateVoucherRequest(
     DateOnly VoucherDate,
@@ -94,12 +95,24 @@ public sealed record DashboardSummary(
     decimal PortfolioOutstanding,
     decimal CollectionsThisMonth,
     int OverdueAccounts,
-    decimal CollectionTarget,
+    decimal? CollectionTarget,
     decimal CollectionAchieved,
     IReadOnlyList<DashboardCollectionDay> CollectionTrend,
     IReadOnlyList<Loan> DueLoans);
 
 public sealed record DashboardCollectionDay(string Day, decimal Amount);
+
+public sealed record BranchInfo(int Id, string Name);
+
+public sealed record LoanProductOption(
+    int Id,
+    string Code,
+    string Name,
+    decimal MinAmount,
+    decimal MaxAmount,
+    int MinInstallments,
+    int MaxInstallments,
+    string Frequency);
 
 public sealed record ReportDefinition(string Id, string Title, string Category, string Description);
 

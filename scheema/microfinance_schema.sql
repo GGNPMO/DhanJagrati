@@ -14,9 +14,9 @@
 SET ANSI_NULLS ON;
 SET QUOTED_IDENTIFIER ON;
 GO
-IF DB_ID('MicroFinanceDb') IS NULL CREATE DATABASE MicroFinanceDb;
+IF DB_ID('DhanJagrati_MFI') IS NULL CREATE DATABASE DhanJagrati_MFI;
 GO
-USE MicroFinanceDb;
+USE DhanJagrati_MFI;
 GO
 CREATE SCHEMA ref;
 GO
@@ -503,6 +503,7 @@ CREATE TABLE lon.LoanApplication (
     ApplicationDate      DATE   NOT NULL DEFAULT CAST(SYSUTCDATETIME() AS DATE),
     FirstInstallmentDate DATE NULL,
     PurposeId            INT NULL REFERENCES ref.Lookup(LookupId),
+    PurposeDescription   NVARCHAR(250) NULL,
     RequestedAmount      DECIMAL(18,2) NOT NULL CHECK (RequestedAmount > 0),
     RequestedInstallments INT NOT NULL CHECK (RequestedInstallments > 0),
     TermYears            SMALLINT NULL CHECK (TermYears >= 0),
@@ -952,12 +953,12 @@ CREATE INDEX IX_JournalEntry_Loan ON gl.JournalEntry(LoanId, VoucherDate) WHERE 
 CREATE TABLE gl.JournalLine (
     JournalLineId  BIGINT IDENTITY(1,1) PRIMARY KEY,
     JournalEntryId BIGINT NOT NULL REFERENCES gl.JournalEntry(JournalEntryId),
-    LineNo         SMALLINT NOT NULL,
+    [LineNo]       SMALLINT NOT NULL,
     LedgerId       BIGINT NOT NULL REFERENCES gl.Ledger(LedgerId),
     Particulars    NVARCHAR(300) NULL,
     DebitAmount    DECIMAL(18,2) NOT NULL DEFAULT 0 CHECK (DebitAmount >= 0),
     CreditAmount   DECIMAL(18,2) NOT NULL DEFAULT 0 CHECK (CreditAmount >= 0),
-    CONSTRAINT UQ_JournalLine_No UNIQUE (JournalEntryId, LineNo),
+    CONSTRAINT UQ_JournalLine_No UNIQUE (JournalEntryId, [LineNo]),
     CHECK ((DebitAmount > 0 AND CreditAmount = 0) OR (CreditAmount > 0 AND DebitAmount = 0))
 );
 CREATE INDEX IX_JournalLine_Ledger ON gl.JournalLine(LedgerId, JournalEntryId);
@@ -999,7 +1000,7 @@ AS
 SELECT h.JournalEntryId, h.VoucherNo, h.VoucherType, h.VoucherDate, h.BranchId,
        h.PaymentMode, h.ChequeNo, h.ChequeDate, h.BankName, h.TransactionNo,
        h.TransferToBranchId, h.SanctionNo, h.LoanId, h.PaymentId, h.PayeeName,
-       h.Remarks AS VoucherRemarks, l.JournalLineId, l.LineNo, l.LedgerId,
+       h.Remarks AS VoucherRemarks, l.JournalLineId, l.[LineNo], l.LedgerId,
        a.LedgerCode, a.LedgerName, a.AccountClass, a.IsCash, a.IsBank,
        l.Particulars, l.DebitAmount, l.CreditAmount
   FROM gl.JournalEntry h
@@ -1067,6 +1068,29 @@ INSERT lon.LoanProduct(ProductCode, ProductName, InterestMethod, Frequency, MinA
                        DefaultRatePct, MinRatePct, MaxRatePct, ProcessingFeePct, PenaltyRatePct, PenaltyGraceDays, ForeclosureChargePct, IsGroupLoan)
 VALUES ('JLG-WEEKLY','Group Loan - Weekly (Flat)','FLAT','WEEKLY', 5000, 50000, 26, 52, 22.0, 18.0, 26.0, 1.0, 24.0, 3, 2.0, 1),
        ('IND-MONTHLY','Individual Loan - Monthly (Reducing)','REDUCING','MONTHLY', 10000, 300000, 6, 36, 24.0, 18.0, 30.0, 1.5, 24.0, 5, 2.0, 0);
+
+INSERT gl.AccountGroup(GroupCode, GroupName, AccountClass) VALUES
+    ('ASSETS', N'Assets', 'ASSET'),
+    ('EQUITY', N'Equity', 'EQUITY'),
+    ('INCOME', N'Income', 'INCOME'),
+    ('EXPENSES', N'Expenses', 'EXPENSE');
+
+INSERT gl.Ledger(LedgerCode, LedgerName, AccountGroupId, AccountClass, IsCash, IsBank)
+SELECT 'CASH', N'Cash in Hand', AccountGroupId, 'ASSET', 1, 0 FROM gl.AccountGroup WHERE GroupCode = 'ASSETS'
+UNION ALL
+SELECT 'BANK', N'Bank Clearing', AccountGroupId, 'ASSET', 0, 1 FROM gl.AccountGroup WHERE GroupCode = 'ASSETS'
+UNION ALL
+SELECT 'LOAN_PORTFOLIO', N'Loan Portfolio', AccountGroupId, 'ASSET', 0, 0 FROM gl.AccountGroup WHERE GroupCode = 'ASSETS'
+UNION ALL
+SELECT 'SHARE_CAPITAL', N'Share Capital', AccountGroupId, 'EQUITY', 0, 0 FROM gl.AccountGroup WHERE GroupCode = 'EQUITY'
+UNION ALL
+SELECT 'INTEREST_INCOME', N'Interest Income', AccountGroupId, 'INCOME', 0, 0 FROM gl.AccountGroup WHERE GroupCode = 'INCOME'
+UNION ALL
+SELECT 'SERVICE_FEE_INCOME', N'Service Fee Income', AccountGroupId, 'INCOME', 0, 0 FROM gl.AccountGroup WHERE GroupCode = 'INCOME'
+UNION ALL
+SELECT 'PENALTY_INCOME', N'Penalty Income', AccountGroupId, 'INCOME', 0, 0 FROM gl.AccountGroup WHERE GroupCode = 'INCOME'
+UNION ALL
+SELECT 'OPERATING_EXPENSES', N'Operating Expenses', AccountGroupId, 'EXPENSE', 0, 0 FROM gl.AccountGroup WHERE GroupCode = 'EXPENSES';
 GO
 
 /* =====================================================================

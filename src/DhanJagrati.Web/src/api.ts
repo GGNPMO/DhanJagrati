@@ -59,10 +59,26 @@ export interface DashboardSummary {
   portfolioOutstanding: number
   collectionsThisMonth: number
   overdueAccounts: number
-  collectionTarget: number
+  collectionTarget: number | null
   collectionAchieved: number
   collectionTrend: { day: string; amount: number }[]
   dueLoans: Loan[]
+}
+
+export interface BranchInfo {
+  id: number
+  name: string
+}
+
+export interface LoanProductOption {
+  id: number
+  code: string
+  name: string
+  minAmount: number
+  maxAmount: number
+  minInstallments: number
+  maxInstallments: number
+  frequency: string
 }
 
 export interface ReportData {

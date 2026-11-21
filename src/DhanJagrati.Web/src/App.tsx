@@ -30,10 +30,12 @@ import {
 } from 'lucide-react'
 import {
   api,
+  type BranchInfo,
   type Collection,
   type DashboardSummary,
   type Loan,
   type LoanApplication,
+  type LoanProductOption,
   type Member,
   type ReportData,
 } from './api'
@@ -61,7 +63,7 @@ const navigation: { label: string; links: { id: PageId; title: string; icon: typ
 ]
 
 const pageCopy: Record<PageId, { title: string; eyebrow: string; description: string }> = {
-  overview: { title: 'Good morning, team', eyebrow: 'BRANCH PULSE', description: 'Here’s what is happening across Central Branch today.' },
+  overview: { title: 'Good morning, team', eyebrow: 'BRANCH PULSE', description: 'Here’s what is happening at your working branch today.' },
   members: { title: 'Member directory', eyebrow: 'COMMUNITY', description: 'Know your members, their groups and the people behind every account.' },
   loans: { title: 'Loan desk', eyebrow: 'CREDIT OPERATIONS', description: 'Review applications, move decisions forward and keep every step visible.' },
   collections: { title: 'Collections', eyebrow: 'FIELD OPERATIONS', description: 'Record a repayment and keep the branch collection book up to date.' },
@@ -99,6 +101,8 @@ function App() {
   const [applications, setApplications] = useState<LoanApplication[]>([])
   const [loanAccounts, setLoanAccounts] = useState<Loan[]>([])
   const [collections, setCollections] = useState<Collection[]>([])
+  const [branchName, setBranchName] = useState('')
+  const [loanProducts, setLoanProducts] = useState<LoanProductOption[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
@@ -115,18 +119,22 @@ function App() {
     setLoading(true)
     setError('')
     try {
-      const [dashboardData, memberRows, applicationRows, accountRows, collectionRows] = await Promise.all([
+      const [dashboardData, memberRows, applicationRows, accountRows, collectionRows, branch, products] = await Promise.all([
         api.get<DashboardSummary>('/dashboard'),
         api.get<Member[]>('/members'),
         api.get<LoanApplication[]>('/loans'),
         api.get<Loan[]>('/loan-accounts'),
         api.get<Collection[]>('/collections'),
+        api.get<BranchInfo>('/branch'),
+        api.get<LoanProductOption[]>('/loan-products'),
       ])
       setDashboard(dashboardData)
       setMembers(memberRows)
       setApplications(applicationRows)
       setLoanAccounts(accountRows)
       setCollections(collectionRows)
+      setBranchName(branch.name)
+      setLoanProducts(products)
     } catch (reason) {
       setError(errorMessage(reason))
     } finally {
@@ -142,7 +150,7 @@ function App() {
     setReportLoading(true)
     setError('')
     try {
-      const query = new URLSearchParams({ from: dateFrom, to: dateTo, branch: 'Central Branch' })
+      const query = new URLSearchParams({ from: dateFrom, to: dateTo, branch: branchName })
       setReport(await api.get<ReportData>(`/reports/${reportType}?${query.toString()}`))
     } catch (reason) {
       setError(errorMessage(reason))
@@ -150,7 +158,7 @@ function App() {
     } finally {
       setReportLoading(false)
     }
-  }, [dateFrom, dateTo, reportType])
+  }, [branchName, dateFrom, dateTo, reportType])
 
   useEffect(() => {
     if (page === 'reports') void generateReport()
@@ -175,6 +183,7 @@ function App() {
         numericFields.has(key) ? (value === '' ? null : Number(value)) : value,
       ]),
     )
+    if (endpoint === '/collections') payload.idempotencyKey = crypto.randomUUID()
     try {
       await api.post(endpoint, payload)
       setModal(null)
@@ -242,7 +251,7 @@ function App() {
 
         <button className="branch-switcher" type="button">
           <span className="branch-icon"><Landmark size={17} /></span>
-          <span className="branch-copy"><small>WORKING BRANCH</small><strong>Central Branch</strong></span>
+          <span className="branch-copy"><small>WORKING BRANCH</small><strong>{branchName || 'Loading branch...'}</strong></span>
           <ChevronDown size={15} />
         </button>
 
@@ -261,7 +270,7 @@ function App() {
         </nav>
 
         <div className="sidebar-bottom">
-          <div className="data-mode"><span className="status-dot" /><span><b>Demo workspace</b><small>Sample data · not persisted</small></span></div>
+          <div className="data-mode"><span className="status-dot" /><span><b>SQL Server</b><small>Connected workspace</small></span></div>
           <div className="sidebar-user">
             <div className="avatar avatar-sand">BA</div>
             <div className="user-copy"><strong>Branch admin</strong><small>Operations team</small></div>
@@ -313,7 +322,7 @@ function App() {
         </main>
       </div>
 
-      {modal === 'member' && <Modal title="Add a member" description="Create a member profile for Central Branch." close={() => setModal(null)}>
+      {modal === 'member' && <Modal title="Add a member" description={`Create a member profile for ${branchName || 'this branch'}.`} close={() => setModal(null)}>
         <form className="form-grid" onSubmit={(event) => void submitForm(event, '/members', 'Member profile created.')}>
           <Field label="Full name" required><input name="fullName" placeholder="e.g. Anjali Devi" required /></Field>
           <Field label="Primary phone" required><input name="phone" placeholder="+91 98xxx xxxxx" required /></Field>
@@ -330,9 +339,9 @@ function App() {
       {modal === 'loan' && <Modal title="New loan application" description="Capture the requested facility and its purpose." close={() => setModal(null)}>
         <form className="form-grid" onSubmit={(event) => void submitForm(event, '/loans', 'Loan application submitted.')}>
           <Field label="Member" required><select name="memberId" required defaultValue=""><option value="" disabled>Select a member</option>{members.map((member) => <option value={member.id} key={member.id}>{member.fullName} · {member.memberNo}</option>)}</select></Field>
-          <Field label="Loan product" required><select name="product" required><option>Sakhi Enterprise</option><option>Livelihood Plus</option><option>Emergency Support</option></select></Field>
-          <Field label="Requested amount" required><input name="amount" type="number" min="1" step="1000" placeholder="₹ 50,000" required /></Field>
-          <Field label="Repayment term" required><select name="tenureMonths" required><option value="12">12 months</option><option value="18">18 months</option><option value="24">24 months</option></select></Field>
+          <Field label="Loan product" required><select name="product" required defaultValue=""><option value="" disabled>Select a monthly product</option>{loanProducts.map((product) => <option value={product.name} key={product.id}>{product.name}</option>)}</select></Field>
+          <Field label="Requested amount" required><input name="amount" type="number" min={loanProducts[0]?.minAmount ?? 1} max={loanProducts[0]?.maxAmount} step="1000" placeholder="₹ 50,000" required /></Field>
+          <Field label="Repayment term (months)" required><input name="tenureMonths" type="number" min={loanProducts[0]?.minInstallments ?? 1} max={loanProducts[0]?.maxInstallments} defaultValue={loanProducts[0]?.minInstallments ?? 12} required /></Field>
           <Field label="Purpose" className="field-wide"><textarea name="purpose" rows={3} placeholder="How will the loan help the member?" /></Field>
           <div className="form-footer"><span>Submission enters the review queue.</span><button className="button button-primary" type="submit"><Check size={16} /> Submit application</button></div>
         </form>
@@ -347,7 +356,7 @@ function Overview({ dashboard, collections, openPage }: { dashboard: DashboardSu
   return (
     <div className="overview-layout">
       <div className="metric-grid">
-        <MetricCard label="Active members" value={dashboard.activeMembers.toLocaleString('en-IN')} note="+ 18 this month" icon={<Users size={18} />} tone="teal" change="up" />
+        <MetricCard label="Active members" value={dashboard.activeMembers.toLocaleString('en-IN')} note="Registered member profiles" icon={<Users size={18} />} tone="teal" />
         <MetricCard label="Live portfolio" value={money(dashboard.portfolioOutstanding)} note="Across active accounts" icon={<HandCoins size={18} />} tone="blue" />
         <MetricCard label="Collected this month" value={money(dashboard.collectionsThisMonth)} note={`${targetPercent}% of branch target`} icon={<Wallet size={18} />} tone="gold" change="up" />
         <MetricCard label="Accounts overdue" value={dashboard.overdueAccounts.toString()} note="Needs field follow-up" icon={<Clock3 size={18} />} tone="rose" change="down" />
@@ -359,7 +368,7 @@ function Overview({ dashboard, collections, openPage }: { dashboard: DashboardSu
             <div><h2>Collection pulse</h2><p>Daily receipts · last 7 days</p></div>
             <button className="button button-small button-quiet" onClick={() => openPage('collections')}>Record collection <ArrowRight size={14} /></button>
           </div>
-          <div className="chart-summary"><strong>{money(dashboard.collectionsThisMonth)}</strong><span><ArrowUpRight size={15} /> 12.8% <small>vs. last month</small></span></div>
+          <div className="chart-summary"><strong>{money(dashboard.collectionsThisMonth)}</strong><span><ArrowUpRight size={15} /> <small>posted receipts this month</small></span></div>
           <div className="bar-chart" aria-label="Collection trend for the last seven days">
             {dashboard.collectionTrend.map((day, index) => (
               <div className="bar-column" key={`${day.day}-${index}`}>
@@ -368,7 +377,7 @@ function Overview({ dashboard, collections, openPage }: { dashboard: DashboardSu
               </div>
             ))}
           </div>
-          <div className="chart-footer"><span><i className="legend-dot" /> Daily collections</span><span>Target <b>{money(dashboard.collectionTarget)}</b></span></div>
+          <div className="chart-footer"><span><i className="legend-dot" /> Daily collections</span><span>Target <b>{dashboard.collectionTarget === null ? 'Not configured' : money(dashboard.collectionTarget)}</b></span></div>
           <div className="progress-track"><span style={{ width: `${targetPercent}%` }} /></div>
         </section>
 
@@ -510,7 +519,7 @@ function ReportsPage({ report, reportType, setReportType, dateFrom, setDateFrom,
         <div className="report-filters">
           <label><span>From date</span><div className="date-input"><CalendarDays size={15} /><input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></div></label>
           <label><span>To date</span><div className="date-input"><CalendarDays size={15} /><input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></div></label>
-          <div className="branch-filter"><span>Branch</span><strong><Landmark size={14} /> Central Branch <ChevronDown size={13} /></strong></div>
+          <div className="branch-filter"><span>Branch</span><strong><Landmark size={14} /> {report?.branch ?? 'Loading...'} <ChevronDown size={13} /></strong></div>
           <button className="button button-primary" onClick={generate} disabled={reportLoading}>{reportLoading ? <RefreshCw size={15} className="spin" /> : <SlidersHorizontal size={15} />} Generate</button>
         </div>
       </section>

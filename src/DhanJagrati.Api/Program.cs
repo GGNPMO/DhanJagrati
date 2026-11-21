@@ -1,7 +1,15 @@
 using DhanJagrati.Api;
+using Microsoft.Data.SqlClient;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddSingleton<DemoFinanceStore>();
+var connectionString = builder.Configuration.GetConnectionString("Microfinance");
+if (string.IsNullOrWhiteSpace(connectionString))
+{
+    throw new InvalidOperationException(
+        "Connection string 'Microfinance' is missing. Configure ConnectionStrings:Microfinance or the ConnectionStrings__Microfinance environment variable.");
+}
+
+builder.Services.AddScoped(_ => new SqlFinanceStore(connectionString));
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
     policy.WithOrigins("http://localhost:5173", "http://localhost:5174")
         .AllowAnyHeader()
@@ -10,13 +18,30 @@ builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
 var app = builder.Build();
 app.UseCors();
 
-app.MapGet("/api/health", () => Results.Ok(new { status = "ok", mode = "demo" }));
-app.MapGet("/api/dashboard", (DemoFinanceStore store) => Results.Ok(store.GetDashboard()));
+app.MapGet("/api/health", async (SqlFinanceStore store, ILoggerFactory loggerFactory, CancellationToken cancellationToken) =>
+{
+    try
+    {
+        await store.CheckHealthAsync(cancellationToken);
+        return Results.Ok(new { status = "ok", mode = "sql-server" });
+    }
+    catch (SqlException exception)
+    {
+        loggerFactory.CreateLogger("Health").LogError(exception, "SQL Server health check failed.");
+        return Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "Database unavailable");
+    }
+});
 
-app.MapGet("/api/members", (string? search, DemoFinanceStore store) =>
-    Results.Ok(store.GetMembers(search)));
+app.MapGet("/api/branch", async (SqlFinanceStore store, CancellationToken cancellationToken) =>
+    Results.Ok(await store.GetDefaultBranchAsync(cancellationToken)));
 
-app.MapPost("/api/members", (CreateMemberRequest request, DemoFinanceStore store) =>
+app.MapGet("/api/dashboard", async (SqlFinanceStore store, CancellationToken cancellationToken) =>
+    Results.Ok(await store.GetDashboardAsync(cancellationToken)));
+
+app.MapGet("/api/members", async (string? search, SqlFinanceStore store, CancellationToken cancellationToken) =>
+    Results.Ok(await store.GetMembersAsync(search, cancellationToken)));
+
+app.MapPost("/api/members", async (CreateMemberRequest request, SqlFinanceStore store, CancellationToken cancellationToken) =>
 {
     var errors = new Dictionary<string, string[]>();
     if (string.IsNullOrWhiteSpace(request.FullName))
@@ -44,111 +69,130 @@ app.MapPost("/api/members", (CreateMemberRequest request, DemoFinanceStore store
         return Results.ValidationProblem(errors);
     }
 
-    return Results.Created("/api/members", store.AddMember(request));
+    var member = await store.AddMemberAsync(request, cancellationToken);
+    return Results.Created($"/api/members/{member.Id}", member);
 });
 
-app.MapGet("/api/loans", (DemoFinanceStore store) => Results.Ok(store.GetLoans()));
-app.MapPost("/api/loans", (CreateLoanRequest request, DemoFinanceStore store) =>
+app.MapGet("/api/loan-products", async (SqlFinanceStore store, CancellationToken cancellationToken) =>
+    Results.Ok(await store.GetLoanProductsAsync(cancellationToken)));
+
+app.MapGet("/api/loans", async (SqlFinanceStore store, CancellationToken cancellationToken) =>
+    Results.Ok(await store.GetLoanApplicationsAsync(cancellationToken)));
+
+app.MapPost("/api/loans", async (CreateLoanRequest request, SqlFinanceStore store, CancellationToken cancellationToken) =>
 {
     if (request.Amount <= 0 || request.TenureMonths <= 0)
     {
         return Results.ValidationProblem(new Dictionary<string, string[]>
         {
-            ["amount"] = ["Loan amount and tenure must be greater than zero."]
+            ["amount"] = ["Loan amount and repayment term must be greater than zero."]
         });
     }
 
-    var loan = store.AddLoan(request);
-    return loan is null
+    var application = await store.AddLoanAsync(request, cancellationToken);
+    return application is null
         ? Results.ValidationProblem(new Dictionary<string, string[]>
         {
-            ["memberId"] = ["Select an existing member."]
+            ["loan"] = ["Select an active member and a monthly loan product with an amount and term inside its configured limits."]
         })
-        : Results.Created("/api/loans", loan);
+        : Results.Created($"/api/loans/{application.ApplicationNo}", application);
 });
 
-app.MapPost("/api/loans/{loanId}/decision", (string loanId, LoanDecisionRequest request, DemoFinanceStore store) =>
-{
-    if (!store.DecideLoan(loanId, request.Approved))
+app.MapPost("/api/loans/{applicationNo}/decision",
+    async (string applicationNo, LoanDecisionRequest request, SqlFinanceStore store, CancellationToken cancellationToken) =>
     {
-        return Results.NotFound(new { message = "Loan application was not found." });
-    }
-
-    return Results.Ok(store.GetLoans().Single(application => application.ApplicationNo == loanId));
-});
-
-app.MapPost("/api/loans/{applicationNo}/disburse", (string applicationNo, DisburseLoanRequest request, DemoFinanceStore store) =>
-{
-    var loan = store.DisburseLoan(applicationNo, request);
-    return loan is null
-        ? Results.ValidationProblem(new Dictionary<string, string[]>
+        if (!await store.DecideLoanAsync(applicationNo, request.Approved, cancellationToken))
         {
-            ["applicationNo"] = ["Only an approved application can be disbursed."]
-        })
-        : Results.Created($"/api/loan-accounts/{loan.LoanNo}", loan);
-});
+            return Results.NotFound(new { message = "Application was not found or is no longer awaiting a decision." });
+        }
 
-app.MapGet("/api/loan-accounts", (DemoFinanceStore store) => Results.Ok(store.GetLoanAccounts()));
-app.MapGet("/api/collections", (DemoFinanceStore store) => Results.Ok(store.GetCollections()));
-app.MapPost("/api/collections", (CreateCollectionRequest request, DemoFinanceStore store) =>
-{
-    if (request.Amount <= 0)
+        var application = (await store.GetLoanApplicationsAsync(cancellationToken))
+            .Single(item => item.ApplicationNo == applicationNo);
+        return Results.Ok(application);
+    });
+
+app.MapPost("/api/loans/{applicationNo}/disburse",
+    async (string applicationNo, DisburseLoanRequest request, SqlFinanceStore store, CancellationToken cancellationToken) =>
     {
-        return Results.ValidationProblem(new Dictionary<string, string[]>
-        {
-            ["amount"] = ["Collection amount must be greater than zero."]
-        });
-    }
+        var loan = await store.DisburseLoanAsync(applicationNo, request, cancellationToken);
+        return loan is null
+            ? Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["applicationNo"] = ["Only an approved application can be disbursed."]
+            })
+            : Results.Created($"/api/loan-accounts/{loan.LoanNo}", loan);
+    });
 
-    var result = store.RecordCollection(request);
-    return result is null
-        ? Results.ValidationProblem(new Dictionary<string, string[]>
-        {
-            ["loanNo"] = ["Select an active loan and an amount no greater than its outstanding balance."]
-        })
-        : Results.Created("/api/collections", result);
-});
+app.MapGet("/api/loan-accounts", async (SqlFinanceStore store, CancellationToken cancellationToken) =>
+    Results.Ok(await store.GetLoanAccountsAsync(cancellationToken)));
 
-app.MapPost("/api/accounting/vouchers", (CreateVoucherRequest request, DemoFinanceStore store) =>
-{
-    if (request.Amount <= 0 || string.IsNullOrWhiteSpace(request.DebitLedger) ||
-        string.IsNullOrWhiteSpace(request.CreditLedger))
+app.MapGet("/api/collections", async (SqlFinanceStore store, CancellationToken cancellationToken) =>
+    Results.Ok(await store.GetCollectionsAsync(cancellationToken)));
+
+app.MapPost("/api/collections",
+    async (CreateCollectionRequest request, SqlFinanceStore store, CancellationToken cancellationToken) =>
     {
-        return Results.ValidationProblem(new Dictionary<string, string[]>
+        if (request.Amount <= 0)
         {
-            ["voucher"] = ["Enter a positive amount and both debit and credit ledgers."]
-        });
-    }
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["amount"] = ["Collection amount must be greater than zero."]
+            });
+        }
 
-    return Results.Created("/api/accounting/vouchers", store.PostVoucher(request));
-});
+        var collection = await store.RecordCollectionAsync(request, cancellationToken);
+        return collection is null
+            ? Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["loanNo"] = ["Select an active loan and enter an amount within its outstanding balance."]
+            })
+            : Results.Created($"/api/collections/{collection.ReceiptNo}", collection);
+    });
+
+app.MapPost("/api/accounting/vouchers",
+    async (CreateVoucherRequest request, SqlFinanceStore store, CancellationToken cancellationToken) =>
+    {
+        if (request.Amount <= 0 || string.IsNullOrWhiteSpace(request.DebitLedger) ||
+            string.IsNullOrWhiteSpace(request.CreditLedger) ||
+            request.DebitLedger.Equals(request.CreditLedger, StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["voucher"] = ["Enter a positive amount and choose two different debit and credit ledgers."]
+            });
+        }
+
+        var report = await store.PostVoucherAsync(request, cancellationToken);
+        return Results.Created("/api/accounting/vouchers", report);
+    });
 
 app.MapGet("/api/reports/types", () => Results.Ok(ReportCatalog.All));
-app.MapGet("/api/reports/{type}", (string type, string? from, string? to, string? branch, DemoFinanceStore store) =>
-{
-    var today = DateOnly.FromDateTime(DateTime.Today);
-    if (!DateOnly.TryParse(from, out var fromDate))
+app.MapGet("/api/reports/{type}",
+    async (string type, string? from, string? to, string? branch, SqlFinanceStore store, CancellationToken cancellationToken) =>
     {
-        fromDate = new DateOnly(today.Year, today.Month, 1);
-    }
-
-    if (!DateOnly.TryParse(to, out var toDate))
-    {
-        toDate = today;
-    }
-
-    if (fromDate > toDate)
-    {
-        return Results.ValidationProblem(new Dictionary<string, string[]>
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        if (!DateOnly.TryParse(from, out var fromDate))
         {
-            ["dateRange"] = ["The start date must be on or before the end date."]
-        });
-    }
+            fromDate = new DateOnly(today.Year, today.Month, 1);
+        }
 
-    var report = store.BuildReport(type, fromDate, toDate, branch ?? "Central Branch");
-    return report is null
-        ? Results.NotFound(new { message = $"Report '{type}' was not found." })
-        : Results.Ok(report);
-});
+        if (!DateOnly.TryParse(to, out var toDate))
+        {
+            toDate = today;
+        }
+
+        if (fromDate > toDate)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["dateRange"] = ["The start date must be on or before the end date."]
+            });
+        }
+
+        var report = await store.BuildReportAsync(type, fromDate, toDate, branch, cancellationToken);
+        return report is null
+            ? Results.NotFound(new { message = $"Report '{type}' was not found." })
+            : Results.Ok(report);
+    });
 
 app.Run();
