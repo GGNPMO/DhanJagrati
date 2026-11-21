@@ -187,7 +187,7 @@ public sealed class SqlFinanceStore(string connectionString)
                     Phone = request.Phone.Trim(),
                     request.MonthlyIncome,
                     KycStatus = kycStatus,
-                    branch.Id
+                    BranchId = branch.Id
                 }, transaction, cancellationToken: cancellationToken));
 
             if (!string.IsNullOrWhiteSpace(request.Village))

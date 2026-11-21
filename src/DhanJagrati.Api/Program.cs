@@ -1,6 +1,9 @@
 using DhanJagrati.Api;
+using Dapper;
 using System.Globalization;
 using Microsoft.Data.SqlClient;
+
+SqlMapper.AddTypeHandler(new DateOnlyTypeHandler());
 
 var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("Microfinance");
