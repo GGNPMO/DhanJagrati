@@ -1,5 +1,7 @@
 using System.Data;
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Dapper;
 using Microsoft.Data.SqlClient;
@@ -14,8 +16,8 @@ public sealed class SqlFinanceStore(string connectionString)
                COALESCE(g.GroupName, N'') AS GroupName, b.BranchName AS Branch,
                CASE c.Status WHEN 'ACTIVE' THEN 'Active' WHEN 'INACTIVE' THEN 'Inactive'
                     WHEN 'BLACKLISTED' THEN 'Blacklisted' ELSE 'Deceased' END AS Status,
-               CAST(c.RegistrationDate AS datetime2) AS JoinedOn,
-               CAST(c.DateOfBirth AS datetime2) AS DateOfBirth, c.GuardianName,
+               CAST(c.RegistrationDate AS date) AS JoinedOn,
+               CAST(c.DateOfBirth AS date) AS DateOfBirth, c.GuardianName,
                c.MonthlyIncome,
                CASE c.KycStatus WHEN 'VERIFIED' THEN 'Verified' WHEN 'REJECTED' THEN 'Rejected'
                     ELSE 'Pending' END AS KycStatus
@@ -40,7 +42,7 @@ public sealed class SqlFinanceStore(string connectionString)
         SELECT l.LoanId AS Id, l.LoanAccountNo AS LoanNo, l.CustomerId AS MemberId,
                c.FullName AS MemberName, p.ProductName AS Product, l.PrincipalAmount AS SanctionedAmount,
                l.PrincipalOutstanding + l.InterestOutstanding + l.FeesOutstanding + l.PenaltyOutstanding AS Outstanding,
-               l.InstallmentAmount AS Installment, CAST(l.NextDueDate AS datetime2) AS NextDue,
+               l.InstallmentAmount AS Installment, CAST(l.NextDueDate AS date) AS NextDue,
                COALESCE(e.EmployeeName, N'Unassigned') AS RelationshipManager,
                CASE l.Status WHEN 'ACTIVE' THEN 'Active' ELSE 'Closed' END AS Status
           FROM lon.Loan l
@@ -101,7 +103,7 @@ public sealed class SqlFinanceStore(string connectionString)
                     (SELECT COUNT(*) FROM lon.Loan WHERE BranchId = @BranchId AND Status = 'ACTIVE' AND NextDueDate < @Today) AS OverdueAccounts,
                     (SELECT COALESCE(SUM(Amount), 0) FROM col.Payment p JOIN lon.Loan l ON l.LoanId = p.LoanId
                       WHERE l.BranchId = @BranchId AND p.Status = 'POSTED' AND p.PaymentDate >= @MonthStart AND p.PaymentDate <= @Today) AS CollectionsThisMonth;
-                """, new { branch.Id, Today = todayValue, MonthStart = monthStart }, cancellationToken: cancellationToken));
+                """, new { BranchId = branch.Id, Today = todayValue, MonthStart = monthStart }, cancellationToken: cancellationToken));
 
         var daily = await connection.QueryAsync<DailyCollectionRow>(
             new CommandDefinition("""
@@ -111,7 +113,7 @@ public sealed class SqlFinanceStore(string connectionString)
                  WHERE l.BranchId = @BranchId AND p.Status = 'POSTED'
                    AND p.PaymentDate >= @From AND p.PaymentDate <= @Today
                  GROUP BY p.PaymentDate;
-                """, new { branch.Id, From = ToSqlDate(today.AddDays(-6)), Today = todayValue }, cancellationToken: cancellationToken));
+                """, new { BranchId = branch.Id, From = ToSqlDate(today.AddDays(-6)), Today = todayValue }, cancellationToken: cancellationToken));
 
         var dailyMap = daily.ToDictionary(row => DateOnly.FromDateTime(row.PaidOn), row => row.Amount);
         var trend = Enumerable.Range(0, 7)
@@ -123,7 +125,7 @@ public sealed class SqlFinanceStore(string connectionString)
             new CommandDefinition(LoanSelect + """
                  AND l.BranchId = @BranchId AND l.NextDueDate <= @Today
                  ORDER BY l.NextDueDate;
-                """, new { branch.Id, Today = todayValue }, cancellationToken: cancellationToken));
+                """, new { BranchId = branch.Id, Today = todayValue }, cancellationToken: cancellationToken));
 
         return new DashboardSummary(
             totals.ActiveMembers,
@@ -257,7 +259,7 @@ public sealed class SqlFinanceStore(string connectionString)
         const string sql = """
             SELECT a.ApplicationId AS Id, a.ApplicationNo, a.CustomerId AS MemberId, c.FullName AS MemberName,
                    p.ProductName AS Product, a.RequestedAmount AS AmountRequested,
-                   a.RequestedInstallments AS TenureMonths, CAST(a.ApplicationDate AS datetime2) AS AppliedOn,
+                   a.RequestedInstallments AS TenureMonths, CAST(a.ApplicationDate AS date) AS AppliedOn,
                    COALESCE(a.PurposeDescription, '') AS Purpose,
                    CASE a.Status WHEN 'SUBMITTED' THEN 'Awaiting review' WHEN 'UNDER_REVIEW' THEN 'Awaiting review'
                         WHEN 'APPROVED' THEN 'Approved' WHEN 'DISBURSED' THEN 'Disbursed'
@@ -445,7 +447,7 @@ public sealed class SqlFinanceStore(string connectionString)
     {
         const string sql = """
             SELECT p.PaymentId AS Id, p.ReceiptNo, l.LoanAccountNo AS LoanNo, c.FullName AS MemberName,
-                   CAST(p.PaymentDate AS datetime2) AS PaidOn, p.Amount,
+                   CAST(p.PaymentDate AS date) AS PaidOn, p.Amount,
                    CASE p.Mode WHEN 'BANK_TRANSFER' THEN 'Bank transfer' ELSE
                         CONCAT(UPPER(LEFT(p.Mode, 1)), LOWER(SUBSTRING(p.Mode, 2, 30))) END AS Mode,
                    COALESCE(p.Reference, p.TransactionNo, p.ChequeNo, '') AS Reference
@@ -471,7 +473,7 @@ public sealed class SqlFinanceStore(string connectionString)
             var existing = await connection.QuerySingleOrDefaultAsync<Collection>(
                 new CommandDefinition("""
                     SELECT p.PaymentId AS Id, p.ReceiptNo, l.LoanAccountNo AS LoanNo, c.FullName AS MemberName,
-                           CAST(p.PaymentDate AS datetime2) AS PaidOn, p.Amount, p.Mode,
+                           CAST(p.PaymentDate AS date) AS PaidOn, p.Amount, p.Mode,
                            COALESCE(p.Reference, p.TransactionNo, p.ChequeNo, '') AS Reference
                       FROM col.Payment p
                       JOIN lon.Loan l ON l.LoanId = p.LoanId
@@ -515,16 +517,326 @@ public sealed class SqlFinanceStore(string connectionString)
             var payment = await connection.QuerySingleAsync<Collection>(
                 new CommandDefinition("""
                     SELECT PaymentId AS Id, ReceiptNo, @LoanNo AS LoanNo, @MemberName AS MemberName,
-                           CAST(PaymentDate AS datetime2) AS PaidOn, Amount,
+                           CAST(PaymentDate AS date) AS PaidOn, Amount,
                            CASE Mode WHEN 'BANK_TRANSFER' THEN 'Bank transfer' ELSE
                                 CONCAT(UPPER(LEFT(Mode, 1)), LOWER(SUBSTRING(Mode, 2, 30))) END AS Mode,
                            COALESCE(Reference, TransactionNo, ChequeNo, '') AS Reference
                       FROM col.Payment WHERE PaymentId = @PaymentId;
                     """, new { PaymentId = paymentId, request.LoanNo, loan.MemberName }, transaction, cancellationToken: cancellationToken));
 
-            await PostCollectionJournalAsync(connection, transaction, paymentId, loan, request, payment.ReceiptNo, cancellationToken);
+            await PostCollectionJournalAsync(
+                connection, transaction, paymentId, loan, request.PaidOn, request.Amount,
+                ToDatabaseMode(request.Mode), request.Reference, payment.ReceiptNo, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return payment;
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
+    }
+
+    public async Task<SettlementQuote?> GetSettlementQuoteAsync(
+        string loanNo,
+        DateOnly asOfDate,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        var loanId = await connection.QuerySingleOrDefaultAsync<long?>(new CommandDefinition("""
+            SELECT LoanId FROM lon.Loan WHERE LoanAccountNo = @LoanNo;
+            """, new { LoanNo = loanNo }, cancellationToken: cancellationToken));
+        return loanId is null
+            ? null
+            : (await ReadSettlementQuoteAsync(connection, null, loanId.Value, asOfDate, cancellationToken))?.ToResponse();
+    }
+
+    public async Task<SettlementOperationResult?> SettleLoanAsync(
+        string loanNo,
+        SettleLoanRequest request,
+        CancellationToken cancellationToken)
+    {
+        var mode = ToDatabaseMode(request.Mode);
+        var paymentDate = DateOnly.FromDateTime(DateTime.Today);
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(
+            IsolationLevel.Serializable, cancellationToken);
+
+        try
+        {
+            var loan = await connection.QuerySingleOrDefaultAsync<PaymentLoan>(new CommandDefinition("""
+                SELECT LoanId AS Id, CustomerId, BranchId, Status,
+                       PrincipalOutstanding + InterestOutstanding + FeesOutstanding + PenaltyOutstanding AS Outstanding,
+                       c.FullName AS MemberName
+                  FROM lon.Loan l WITH (UPDLOCK, HOLDLOCK)
+                  JOIN cust.Customer c ON c.CustomerId = l.CustomerId
+                 WHERE l.LoanAccountNo = @LoanNo;
+                """, new { LoanNo = loanNo }, transaction, cancellationToken: cancellationToken));
+            if (loan is null)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return null;
+            }
+
+            var priorPayment = await connection.QuerySingleOrDefaultAsync<CompletedSettlementRow>(new CommandDefinition("""
+                SELECT s.SettlementId, l.LoanAccountNo AS LoanNo, s.SettlementAmount,
+                       p.PaymentId, p.ReceiptNo, p.PaymentDate
+                  FROM col.Payment p
+                  JOIN lon.LoanSettlement s ON s.PaymentId = p.PaymentId
+                  JOIN lon.Loan l ON l.LoanId = s.LoanId
+                 WHERE p.IdempotencyKey = @IdempotencyKey;
+                """, new { request.IdempotencyKey }, transaction, cancellationToken: cancellationToken));
+            if (priorPayment is not null)
+            {
+                if (!string.Equals(priorPayment.LoanNo, loanNo, StringComparison.OrdinalIgnoreCase) ||
+                    priorPayment.SettlementAmount != request.Amount)
+                {
+                    throw new InvalidOperationException("The idempotency key was already used for a different payment.");
+                }
+
+                await transaction.CommitAsync(cancellationToken);
+                return new SettlementOperationResult(
+                    priorPayment.SettlementId, loanNo, "already_completed", priorPayment.SettlementAmount,
+                    null, priorPayment.PaymentId, priorPayment.ReceiptNo,
+                    DateOnly.FromDateTime(priorPayment.PaymentDate));
+            }
+
+            var idempotencyKeyExists = await connection.ExecuteScalarAsync<bool>(new CommandDefinition("""
+                SELECT CASE WHEN EXISTS (
+                    SELECT 1 FROM col.Payment WHERE IdempotencyKey = @IdempotencyKey
+                ) THEN 1 ELSE 0 END;
+                """, new { request.IdempotencyKey }, transaction, cancellationToken: cancellationToken));
+            if (idempotencyKeyExists)
+            {
+                throw new InvalidOperationException("The idempotency key was already used for a non-settlement payment.");
+            }
+
+            var quote = await ReadSettlementQuoteAsync(connection, transaction, loan.Id, paymentDate, cancellationToken);
+            if (quote is null)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return null;
+            }
+
+            if (request.Amount <= 0 || request.Amount != quote.TotalPayable)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return new SettlementOperationResult(
+                    null, loanNo, "amount_mismatch", request.Amount, quote.TotalPayable, null, null, null);
+            }
+
+            var matchingSettlements = (await connection.QueryAsync<SettlementRow>(new CommandDefinition("""
+                SELECT SettlementId, LoanId, SettlementAmount, Status
+                  FROM lon.LoanSettlement WITH (UPDLOCK, HOLDLOCK)
+                 WHERE LoanId = @LoanId AND SettlementAmount = @Amount
+                   AND SettlementType = 'FORECLOSURE' AND AsOfDate = @AsOfDate
+                   AND Status IN ('REQUESTED', 'APPROVED');
+                """, new { LoanId = loan.Id, Amount = request.Amount, AsOfDate = ToSqlDate(paymentDate) },
+                transaction, cancellationToken: cancellationToken))).ToArray();
+
+            if (matchingSettlements.Length > 1)
+            {
+                throw new InvalidOperationException("Multiple matching settlement requests exist; resolve them before payment.");
+            }
+
+            if (matchingSettlements.Length == 0)
+            {
+                var parameters = new DynamicParameters();
+                parameters.Add("LoanId", loan.Id, DbType.Int64);
+                parameters.Add("SettlementType", "FORECLOSURE", DbType.AnsiString, size: 20);
+                parameters.Add("AsOfDate", ToSqlDate(paymentDate), DbType.Date);
+                parameters.Add("InterestWaived", 0m, DbType.Decimal);
+                parameters.Add("PenaltyWaived", 0m, DbType.Decimal);
+                parameters.Add("Reason", "Requested through loan settlement API.", DbType.String, size: 300);
+                parameters.Add("UserId", null, DbType.Int32);
+                parameters.Add("SettlementId", dbType: DbType.Int64, direction: ParameterDirection.Output);
+                await connection.ExecuteAsync(new CommandDefinition(
+                    "lon.usp_Settlement_Create", parameters, transaction,
+                    commandType: CommandType.StoredProcedure, cancellationToken: cancellationToken));
+
+                var settlementId = parameters.Get<long>("SettlementId");
+                await transaction.CommitAsync(cancellationToken);
+                return new SettlementOperationResult(
+                    settlementId, loanNo, "approval_required", request.Amount, quote.TotalPayable,
+                    null, null, null);
+            }
+
+            var settlement = matchingSettlements[0];
+            if (settlement.Status == "REQUESTED")
+            {
+                await transaction.CommitAsync(cancellationToken);
+                return new SettlementOperationResult(
+                    settlement.SettlementId, loanNo, "approval_required", settlement.SettlementAmount,
+                    quote.TotalPayable, null, null, null);
+            }
+
+            var completionParameters = new DynamicParameters();
+            completionParameters.Add("SettlementId", settlement.SettlementId, DbType.Int64);
+            completionParameters.Add("PaymentDate", ToSqlDate(paymentDate), DbType.Date);
+            completionParameters.Add("Mode", mode, DbType.AnsiString, size: 12);
+            completionParameters.Add("Reference", NullIfWhiteSpace(request.Reference), DbType.String, size: 60);
+            completionParameters.Add("IdempotencyKey", request.IdempotencyKey, DbType.Guid);
+            completionParameters.Add("UserId", null, DbType.Int32);
+            await connection.ExecuteAsync(new CommandDefinition(
+                "lon.usp_Settlement_Complete", completionParameters, transaction,
+                commandType: CommandType.StoredProcedure, cancellationToken: cancellationToken));
+
+            var payment = await connection.QuerySingleAsync<PaymentReceiptRow>(new CommandDefinition("""
+                SELECT PaymentId, ReceiptNo, PaymentDate
+                  FROM col.Payment
+                 WHERE IdempotencyKey = @IdempotencyKey;
+                """, new { request.IdempotencyKey }, transaction, cancellationToken: cancellationToken));
+            await PostCollectionJournalAsync(
+                connection, transaction, payment.PaymentId, loan, paymentDate, request.Amount,
+                mode, request.Reference, payment.ReceiptNo, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+
+            return new SettlementOperationResult(
+                settlement.SettlementId, loanNo, "completed", settlement.SettlementAmount,
+                quote.TotalPayable, payment.PaymentId, payment.ReceiptNo, paymentDate);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
+    }
+
+    public async Task<BulkCollectionResult> RecordCollectionsBulkAsync(
+        BulkCollectionRequest request,
+        CancellationToken cancellationToken)
+    {
+        var mode = ToDatabaseMode(request.Mode);
+        var preparedItems = request.Items.Select(item => new PreparedBulkItem(
+            item.LoanNo.Trim(),
+            item.Amount,
+            NullIfWhiteSpace(item.Reference),
+            CreateBulkIdempotencyKey(request.PaidOn, mode, item))).ToArray();
+
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(
+            IsolationLevel.Serializable, cancellationToken);
+        try
+        {
+            var results = new List<BulkCollectionItemResult>(preparedItems.Length);
+            var newItems = new List<PreparedBulkItem>();
+            string? batchNo = null;
+            foreach (var item in preparedItems)
+            {
+                var prior = await connection.QuerySingleOrDefaultAsync<PaymentReceiptRow>(new CommandDefinition("""
+                    SELECT PaymentId, ReceiptNo, PaymentDate
+                      FROM col.Payment WITH (UPDLOCK, HOLDLOCK)
+                     WHERE IdempotencyKey = @IdempotencyKey;
+                    """, new { IdempotencyKey = item.IdempotencyKey }, transaction, cancellationToken: cancellationToken));
+                if (prior is null)
+                {
+                    newItems.Add(item);
+                    continue;
+                }
+
+                var priorLoanNo = await connection.QuerySingleAsync<string>(new CommandDefinition("""
+                    SELECT l.LoanAccountNo
+                      FROM col.Payment p JOIN lon.Loan l ON l.LoanId = p.LoanId
+                     WHERE p.PaymentId = @PaymentId;
+                    """, new { prior.PaymentId }, transaction, cancellationToken: cancellationToken));
+                if (!string.Equals(priorLoanNo, item.LoanNo, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException("A generated idempotency key matched a payment for another loan.");
+                }
+
+                results.Add(new BulkCollectionItemResult(
+                    priorLoanNo, item.Amount, DateOnly.FromDateTime(prior.PaymentDate), prior.ReceiptNo, "already_posted"));
+            }
+
+            if (newItems.Count > 0)
+            {
+                var loans = (await connection.QueryAsync<PaymentLoanRow>(new CommandDefinition("""
+                    SELECT LoanId AS Id, CustomerId, BranchId, Status,
+                           PrincipalOutstanding + InterestOutstanding + FeesOutstanding + PenaltyOutstanding AS Outstanding,
+                           c.FullName AS MemberName, l.LoanAccountNo AS LoanNo
+                      FROM lon.Loan l WITH (UPDLOCK, HOLDLOCK)
+                      JOIN cust.Customer c ON c.CustomerId = l.CustomerId
+                     WHERE l.LoanAccountNo IN @LoanNos;
+                    """, new { LoanNos = newItems.Select(item => item.LoanNo).Distinct(StringComparer.OrdinalIgnoreCase).ToArray() },
+                    transaction, cancellationToken: cancellationToken))).ToDictionary(row => row.LoanNo, StringComparer.OrdinalIgnoreCase);
+
+                foreach (var item in newItems)
+                {
+                    if (!loans.TryGetValue(item.LoanNo, out var loan) || loan.Status != "ACTIVE")
+                    {
+                        throw new InvalidOperationException($"Loan '{item.LoanNo}' was not found or is not active; no items were posted.");
+                    }
+
+                    if (item.Amount > loan.Outstanding)
+                    {
+                        throw new InvalidOperationException($"Collection for loan '{item.LoanNo}' exceeds its outstanding balance; no items were posted.");
+                    }
+                }
+
+                var branch = await GetDefaultBranchAsync(connection, transaction, cancellationToken);
+                batchNo = "CB" + Guid.NewGuid().ToString("N")[..28].ToUpperInvariant();
+                var batchId = await connection.ExecuteScalarAsync<long>(new CommandDefinition("""
+                    INSERT col.CollectionBatch(BatchNo, BranchId, PaymentDate, CollectionMode, SelectionMode, Status, Remarks)
+                    OUTPUT INSERTED.BatchId
+                    VALUES (@BatchNo, @BranchId, @PaymentDate, @Mode, 'LOAN_WISE', 'OPEN', N'Bulk API collection batch');
+                    """, new
+                {
+                    BatchNo = batchNo,
+                    BranchId = branch.Id,
+                    PaymentDate = ToSqlDate(request.PaidOn),
+                    Mode = mode
+                }, transaction, cancellationToken: cancellationToken));
+
+                foreach (var item in newItems)
+                {
+                    var loan = loans[item.LoanNo];
+                    var parameters = new DynamicParameters();
+                    parameters.Add("LoanId", loan.Id, DbType.Int64);
+                    parameters.Add("PaymentDate", ToSqlDate(request.PaidOn), DbType.Date);
+                    parameters.Add("Amount", item.Amount, DbType.Decimal);
+                    parameters.Add("Mode", mode, DbType.AnsiString, size: 20);
+                    parameters.Add("Reference", item.Reference, DbType.String, size: 60);
+                    parameters.Add("IdempotencyKey", item.IdempotencyKey, DbType.Guid);
+                    parameters.Add("UserId", null, DbType.Int32);
+                    parameters.Add("PaymentId", dbType: DbType.Int64, direction: ParameterDirection.Output);
+                    parameters.Add("BatchId", batchId, DbType.Int64);
+                    await connection.ExecuteAsync(new CommandDefinition(
+                        "col.usp_PostPayment", parameters, transaction,
+                        commandType: CommandType.StoredProcedure, cancellationToken: cancellationToken));
+
+                    var paymentId = parameters.Get<long>("PaymentId");
+                    var payment = await connection.QuerySingleAsync<PaymentReceiptRow>(new CommandDefinition("""
+                        SELECT PaymentId, ReceiptNo, PaymentDate
+                          FROM col.Payment WHERE PaymentId = @PaymentId;
+                        """, new { PaymentId = paymentId }, transaction, cancellationToken: cancellationToken));
+                    await PostCollectionJournalAsync(
+                        connection, transaction, paymentId,
+                        new PaymentLoan(loan.Id, loan.CustomerId, loan.BranchId, loan.Status, loan.Outstanding, loan.MemberName),
+                        request.PaidOn, item.Amount,
+                        mode, item.Reference, payment.ReceiptNo, cancellationToken);
+                    results.Add(new BulkCollectionItemResult(
+                        item.LoanNo, item.Amount, request.PaidOn, payment.ReceiptNo, "posted"));
+                }
+
+                await connection.ExecuteAsync(new CommandDefinition("""
+                    UPDATE col.CollectionBatch
+                       SET TotalAmount = @TotalAmount, Status = 'POSTED'
+                     WHERE BatchId = @BatchId;
+                    """, new { TotalAmount = newItems.Sum(item => item.Amount), BatchId = batchId },
+                    transaction, cancellationToken: cancellationToken));
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+            var orderedResults = preparedItems
+                .Select(item => results.Single(result =>
+                    string.Equals(result.LoanNo, item.LoanNo, StringComparison.OrdinalIgnoreCase)))
+                .ToArray();
+            return new BulkCollectionResult(
+                preparedItems.Length,
+                orderedResults.Count(item => item.Status == "posted"),
+                orderedResults.Count(item => item.Status == "already_posted"),
+                batchNo,
+                orderedResults);
         }
         catch
         {
@@ -622,7 +934,10 @@ public sealed class SqlFinanceStore(string connectionString)
         SqlTransaction transaction,
         long paymentId,
         PaymentLoan loan,
-        CreateCollectionRequest request,
+        DateOnly paidOn,
+        decimal amount,
+        string mode,
+        string? reference,
         string receiptNo,
         CancellationToken cancellationToken)
     {
@@ -640,7 +955,7 @@ public sealed class SqlFinanceStore(string connectionString)
                AND LedgerCode IN ('CASH', 'BANK', 'LOAN_PORTFOLIO', 'INTEREST_INCOME', 'SERVICE_FEE_INCOME', 'PENALTY_INCOME');
             """, transaction: transaction, cancellationToken: cancellationToken));
         var ledgerIds = ledgerRows.ToDictionary(item => item.Code, item => item.Id, StringComparer.OrdinalIgnoreCase);
-        var debitCode = ToDatabaseMode(request.Mode) == "CASH" ? "CASH" : "BANK";
+        var debitCode = mode == "CASH" ? "CASH" : "BANK";
         if (!ledgerIds.ContainsKey(debitCode))
         {
             throw new InvalidOperationException($"Required ledger '{debitCode}' is missing. Run the SQL support migration.");
@@ -648,7 +963,7 @@ public sealed class SqlFinanceStore(string connectionString)
 
         var lines = new List<(long LedgerId, decimal Debit, decimal Credit, string Particulars)>
         {
-            (ledgerIds[debitCode], request.Amount, 0, $"Collection from {loan.MemberName}")
+            (ledgerIds[debitCode], amount, 0, $"Collection from {loan.MemberName}")
         };
         foreach (var allocation in allocations)
         {
@@ -674,11 +989,11 @@ public sealed class SqlFinanceStore(string connectionString)
             """, new
         {
             VoucherNo = receiptNo,
-            VoucherDate = ToSqlDate(request.PaidOn),
+            VoucherDate = ToSqlDate(paidOn),
             BranchId = loan.BranchId,
             PayeeName = loan.MemberName,
-            Mode = ToDatabaseMode(request.Mode),
-            Reference = NullIfWhiteSpace(request.Reference),
+            Mode = mode,
+            Reference = NullIfWhiteSpace(reference),
             loan.Id,
             PaymentId = paymentId
         }, transaction, cancellationToken: cancellationToken));
@@ -703,6 +1018,21 @@ public sealed class SqlFinanceStore(string connectionString)
         await connection.ExecuteAsync(new CommandDefinition("""
             EXEC gl.usp_PostJournalEntry @JournalEntryId = @JournalId, @UserId = NULL;
             """, new { JournalId = journalId }, transaction, cancellationToken: cancellationToken));
+    }
+
+    private static async Task<SettlementQuoteRow?> ReadSettlementQuoteAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        long loanId,
+        DateOnly asOfDate,
+        CancellationToken cancellationToken)
+    {
+        return await connection.QuerySingleOrDefaultAsync<SettlementQuoteRow>(new CommandDefinition(
+            "lon.usp_Settlement_Quote",
+            new { LoanId = loanId, AsOfDate = ToSqlDate(asOfDate) },
+            transaction,
+            commandType: CommandType.StoredProcedure,
+            cancellationToken: cancellationToken));
     }
 
     private async Task<Member> GetMemberByIdAsync(SqlConnection connection, long id, CancellationToken cancellationToken)
@@ -775,6 +1105,20 @@ public sealed class SqlFinanceStore(string connectionString)
     private static DateTime ToSqlDate(DateOnly date) => date.ToDateTime(TimeOnly.MinValue);
     private static string? NullIfWhiteSpace(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
+    private static Guid CreateBulkIdempotencyKey(DateOnly paidOn, string mode, BulkCollectionItemRequest item)
+    {
+        var identity = JsonSerializer.Serialize(new
+        {
+            PaidOn = paidOn.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            Mode = mode,
+            LoanNo = item.LoanNo.Trim().ToUpperInvariant(),
+            item.Amount,
+            Reference = NullIfWhiteSpace(item.Reference)
+        });
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(identity));
+        return new Guid(hash.AsSpan(0, 16));
+    }
+
     private static (string FirstName, string? LastName) SplitName(string fullName)
     {
         var parts = fullName.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
@@ -789,6 +1133,35 @@ public sealed class SqlFinanceStore(string connectionString)
     private sealed record ApplicationMember(long Id, int BranchId, decimal? MonthlyIncome, long? GroupId);
     private sealed record ApprovalRow(long Id, string Status, decimal RequestedAmount, int RequestedInstallments, decimal InterestRatePct);
     private sealed record PaymentLoan(long Id, long CustomerId, int BranchId, string Status, decimal Outstanding, string MemberName);
+    private sealed record PaymentLoanRow(long Id, long CustomerId, int BranchId, string Status, decimal Outstanding, string MemberName, string LoanNo);
+    private sealed record PreparedBulkItem(string LoanNo, decimal Amount, string? Reference, Guid IdempotencyKey);
+    private sealed record PaymentReceiptRow(long PaymentId, string ReceiptNo, DateTime PaymentDate);
+    private sealed record SettlementRow(long SettlementId, long LoanId, decimal SettlementAmount, string Status);
+    private sealed record SettlementQuoteRow(
+        long LoanId,
+        string LoanAccountNo,
+        DateTime AsOfDate,
+        decimal PrincipalOutstanding,
+        decimal InterestAccrued,
+        decimal FutureInterestNotCharged,
+        decimal FeesOutstanding,
+        decimal PenaltyOutstanding,
+        decimal ForeclosureCharge,
+        decimal TotalPayable)
+    {
+        public SettlementQuote ToResponse() => new(
+            LoanAccountNo,
+            DateOnly.FromDateTime(AsOfDate),
+            PrincipalOutstanding,
+            InterestAccrued,
+            FutureInterestNotCharged,
+            FeesOutstanding,
+            PenaltyOutstanding,
+            ForeclosureCharge,
+            TotalPayable);
+    }
+    private sealed record CompletedSettlementRow(
+        long SettlementId, string LoanNo, decimal SettlementAmount, long PaymentId, string ReceiptNo, DateTime PaymentDate);
     private sealed record LedgerIdRow(long Id, string Name);
     private sealed record LedgerCodeRow(long Id, string Code);
     private sealed record AllocationRow(string Component, decimal Amount);

@@ -80,6 +80,54 @@ public sealed record CreateCollectionRequest(
     string Reference,
     Guid? IdempotencyKey = null);
 
+public sealed record SettlementQuote(
+    string LoanNo,
+    DateOnly AsOfDate,
+    decimal PrincipalOutstanding,
+    decimal InterestAccrued,
+    decimal FutureInterestNotCharged,
+    decimal FeesOutstanding,
+    decimal PenaltyOutstanding,
+    decimal ForeclosureCharge,
+    decimal TotalPayable);
+
+public sealed record SettleLoanRequest(
+    decimal Amount,
+    string Mode,
+    string? Reference,
+    Guid IdempotencyKey);
+
+public sealed record SettlementOperationResult(
+    long? SettlementId,
+    string LoanNo,
+    string Status,
+    decimal SettlementAmount,
+    decimal? ExpectedAmount,
+    long? PaymentId,
+    string? ReceiptNo,
+    DateOnly? PaymentDate);
+
+public sealed record BulkCollectionItemRequest(string LoanNo, decimal Amount, string? Reference);
+
+public sealed record BulkCollectionRequest(
+    DateOnly PaidOn,
+    string Mode,
+    IReadOnlyList<BulkCollectionItemRequest> Items);
+
+public sealed record BulkCollectionItemResult(
+    string LoanNo,
+    decimal Amount,
+    DateOnly PaidOn,
+    string ReceiptNo,
+    string Status);
+
+public sealed record BulkCollectionResult(
+    int RequestedCount,
+    int PostedCount,
+    int AlreadyPostedCount,
+    string? BatchNo,
+    IReadOnlyList<BulkCollectionItemResult> Items);
+
 public sealed record CreateVoucherRequest(
     DateOnly VoucherDate,
     string Narration,

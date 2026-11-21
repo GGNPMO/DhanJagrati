@@ -42,6 +42,17 @@ import {
 import './App.css'
 
 type PageId = 'overview' | 'members' | 'loans' | 'collections' | 'accounting' | 'reports'
+const pageIds: PageId[] = ['overview', 'members', 'loans', 'collections', 'accounting', 'reports']
+
+function pageFromLocation(): PageId {
+  const requested = window.location.hash.replace(/^#\/?/, '').split('/')[0] as PageId
+  return pageIds.includes(requested) ? requested : 'overview'
+}
+
+function reportFromLocation() {
+  const requested = window.location.hash.replace(/^#\/?/, '').split('/')[1]
+  return requested && Object.hasOwn(reportTitles, requested) ? requested : 'cashbook'
+}
 
 const navigation: { label: string; links: { id: PageId; title: string; icon: typeof LayoutDashboard }[] }[] = [
   { label: 'WORKSPACE', links: [{ id: 'overview', title: 'Overview', icon: LayoutDashboard }] },
@@ -94,7 +105,7 @@ const today = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1)
 const monthStart = `${today.slice(0, 8)}01`
 
 function App() {
-  const [page, setPage] = useState<PageId>('overview')
+  const [page, setPage] = useState<PageId>(pageFromLocation)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [dashboard, setDashboard] = useState<DashboardSummary | null>(null)
   const [members, setMembers] = useState<Member[]>([])
@@ -107,7 +118,7 @@ function App() {
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
   const [modal, setModal] = useState<'member' | 'loan' | null>(null)
-  const [reportType, setReportType] = useState('cashbook')
+  const [reportType, setReportType] = useState(reportFromLocation)
   const [report, setReport] = useState<ReportData | null>(null)
   const [reportLoading, setReportLoading] = useState(false)
   const [dateFrom, setDateFrom] = useState(monthStart)
@@ -145,6 +156,15 @@ function App() {
   useEffect(() => {
     void refresh()
   }, [refresh])
+
+  useEffect(() => {
+    const syncLocation = () => {
+      setPage(pageFromLocation())
+      if (pageFromLocation() === 'reports') setReportType(reportFromLocation())
+    }
+    window.addEventListener('hashchange', syncLocation)
+    return () => window.removeEventListener('hashchange', syncLocation)
+  }, [])
 
   const generateReport = useCallback(async () => {
     setReportLoading(true)
@@ -222,6 +242,15 @@ function App() {
 
   function showPage(id: PageId) {
     setPage(id)
+    if (pageFromLocation() !== id) window.location.hash = `/${id}`
+    setMobileNavOpen(false)
+    setError('')
+  }
+
+  function showReport(type: string) {
+    setReportType(type)
+    setPage('reports')
+    window.location.hash = `/reports/${type}`
     setMobileNavOpen(false)
     setError('')
   }
@@ -260,7 +289,7 @@ function App() {
             <div className="nav-group" key={group.label}>
               <span className="nav-label">{group.label}</span>
               {group.links.map(({ id, title, icon: Icon }) => (
-                <button className={`nav-link ${page === id ? 'active' : ''}`} key={id} onClick={() => showPage(id)}>
+                <button className={`nav-link ${page === id ? 'active' : ''}`} key={id} aria-current={page === id ? 'page' : undefined} onClick={() => showPage(id)}>
                   <Icon size={18} strokeWidth={1.8} /><span>{title}</span>
                   {id === 'collections' && dashboard?.overdueAccounts ? <span className="nav-count">{dashboard.overdueAccounts}</span> : null}
                 </button>
@@ -316,7 +345,7 @@ function App() {
               {page === 'loans' && <LoansPage applications={applications} accounts={loanAccounts} activeTab={loanTab} setActiveTab={setLoanTab} decide={decide} disburse={disburse} openAdd={() => setModal('loan')} />}
               {page === 'collections' && <CollectionsPage accounts={loanAccounts} collections={collections} onSubmit={(event) => void submitForm(event, '/collections', 'Collection receipt recorded.')} />}
               {page === 'accounting' && <AccountingPage onSubmit={(event) => void submitForm(event, '/accounting/vouchers', 'Balanced voucher posted.')} openReports={() => showPage('reports')} />}
-              {page === 'reports' && <ReportsPage report={report} reportType={reportType} setReportType={setReportType} dateFrom={dateFrom} setDateFrom={setDateFrom} dateTo={dateTo} setDateTo={setDateTo} reportLoading={reportLoading} generate={generateReport} exportReport={exportReport} />}
+              {page === 'reports' && <ReportsPage report={report} reportType={reportType} setReportType={showReport} dateFrom={dateFrom} setDateFrom={setDateFrom} dateTo={dateTo} setDateTo={setDateTo} reportLoading={reportLoading} generate={generateReport} exportReport={exportReport} />}
             </>
           )}
         </main>

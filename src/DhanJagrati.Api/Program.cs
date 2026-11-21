@@ -1,4 +1,5 @@
 using DhanJagrati.Api;
+using System.Globalization;
 using Microsoft.Data.SqlClient;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -126,6 +127,104 @@ app.MapPost("/api/loans/{applicationNo}/disburse",
 app.MapGet("/api/loan-accounts", async (SqlFinanceStore store, CancellationToken cancellationToken) =>
     Results.Ok(await store.GetLoanAccountsAsync(cancellationToken)));
 
+app.MapGet("/api/loans/{loanNo}/settlement-quote",
+    async (string loanNo, string? asOf, SqlFinanceStore store, CancellationToken cancellationToken) =>
+    {
+        if (!DateOnly.TryParseExact(asOf, "yyyy-MM-dd", CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out var asOfDate))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["asOf"] = ["Enter a date in YYYY-MM-DD format."]
+            });
+        }
+
+        var quote = await store.GetSettlementQuoteAsync(loanNo, asOfDate, cancellationToken);
+        return quote is null
+            ? Results.NotFound(new { message = "Active loan was not found or has no settlement quote." })
+            : Results.Ok(quote);
+    });
+
+app.MapPost("/api/loans/{loanNo}/settlement",
+    async (string loanNo, SettleLoanRequest request, SqlFinanceStore store, ILoggerFactory loggerFactory, CancellationToken cancellationToken) =>
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (string.IsNullOrWhiteSpace(loanNo))
+        {
+            errors["loanNo"] = ["Loan number is required."];
+        }
+
+        if (request.Amount <= 0)
+        {
+            errors["amount"] = ["Settlement amount must be greater than zero."];
+        }
+
+        if (request.IdempotencyKey == Guid.Empty)
+        {
+            errors["idempotencyKey"] = ["A non-empty idempotency key is required."];
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Mode) ||
+            !new[] { "CASH", "UPI", "CHEQUE", "NEFT", "NACH", "BANK_TRANSFER" }
+                .Contains(request.Mode.Trim().ToUpperInvariant()))
+        {
+            errors["mode"] = ["Select a supported settlement payment mode."];
+        }
+
+        if (request.Reference?.Length > 60)
+        {
+            errors["reference"] = ["Reference cannot exceed 60 characters."];
+        }
+
+        if (errors.Count > 0)
+        {
+            return Results.ValidationProblem(errors);
+        }
+
+        try
+        {
+            var result = await store.SettleLoanAsync(loanNo.Trim(), request, cancellationToken);
+            if (result is null)
+            {
+                return Results.NotFound(new { message = "Loan was not found." });
+            }
+
+            if (result.Status == "amount_mismatch")
+            {
+                return Results.Problem(
+                    statusCode: StatusCodes.Status400BadRequest,
+                    title: "Settlement amount does not match the quote",
+                    detail: $"The current settlement amount is {result.ExpectedAmount:0.00}.");
+            }
+
+            if (result.Status == "approval_required")
+            {
+                return Results.Accepted($"/api/loans/{loanNo}/settlement", result);
+            }
+
+            return Results.Ok(result);
+        }
+        catch (InvalidOperationException exception)
+        {
+            return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Settlement conflict", detail: exception.Message);
+        }
+        catch (ArgumentException exception)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["request"] = [exception.Message]
+            });
+        }
+        catch (SqlException exception)
+        {
+            loggerFactory.CreateLogger("Settlements").LogError(exception, "SQL settlement completion failed.");
+            return Results.Problem(
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Settlement could not be completed",
+                detail: "The loan or settlement state changed before payment was recorded.");
+        }
+    });
+
 app.MapGet("/api/collections", async (SqlFinanceStore store, CancellationToken cancellationToken) =>
     Results.Ok(await store.GetCollectionsAsync(cancellationToken)));
 
@@ -147,6 +246,79 @@ app.MapPost("/api/collections",
                 ["loanNo"] = ["Select an active loan and enter an amount within its outstanding balance."]
             })
             : Results.Created($"/api/collections/{collection.ReceiptNo}", collection);
+    });
+
+app.MapPost("/api/collections/bulk",
+    async (BulkCollectionRequest request, SqlFinanceStore store, ILoggerFactory loggerFactory, CancellationToken cancellationToken) =>
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (request.Items is null || request.Items.Count == 0 || request.Items.Count > 100)
+        {
+            errors["items"] = ["Provide between 1 and 100 collection items."];
+        }
+        else
+        {
+            if (request.Items.Any(item => string.IsNullOrWhiteSpace(item.LoanNo)))
+            {
+                errors["items"] = ["Every item must include a loan number."];
+            }
+
+            if (request.Items.Any(item => item.Amount <= 0))
+            {
+                errors["amount"] = ["Every collection amount must be greater than zero."];
+            }
+
+            if (request.Items.Any(item => item.Reference?.Length > 60))
+            {
+                errors["reference"] = ["References cannot exceed 60 characters."];
+            }
+
+            if (request.Items.Where(item => !string.IsNullOrWhiteSpace(item.LoanNo))
+                .GroupBy(item => item.LoanNo.Trim(), StringComparer.OrdinalIgnoreCase)
+                .Any(group => group.Count() > 1))
+            {
+                errors["items"] = ["A loan may appear only once in a bulk request."];
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Mode) ||
+            !new[] { "CASH", "UPI", "CHEQUE", "NEFT", "BANK_TRANSFER", "SAVINGS_TRANSFER" }
+                .Contains(request.Mode.Trim().ToUpperInvariant()))
+        {
+            errors["mode"] = ["Select a supported collection payment mode."];
+        }
+
+        if (errors.Count > 0)
+        {
+            return Results.ValidationProblem(errors);
+        }
+
+        try
+        {
+            return Results.Ok(await store.RecordCollectionsBulkAsync(request, cancellationToken));
+        }
+        catch (InvalidOperationException exception)
+        {
+            return Results.Problem(
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Collection batch was not posted",
+                detail: exception.Message);
+        }
+        catch (ArgumentException exception)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["request"] = [exception.Message]
+            });
+        }
+        catch (SqlException exception)
+        {
+            loggerFactory.CreateLogger("Collections").LogError(exception, "SQL bulk collection posting failed.");
+            return Results.Problem(
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "Collection batch was not posted",
+                detail: "The database rejected the batch; no collection items were committed.");
+        }
     });
 
 app.MapPost("/api/accounting/vouchers",
