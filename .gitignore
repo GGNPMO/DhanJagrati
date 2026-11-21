@@ -8,6 +8,8 @@
 ## Get latest from https://github.com/github/gitignore/blob/main/Dotnet.gitignore
 
 # Build results
+node_modules/
+dist/
 [Dd]ebug/
 [Dd]ebugPublic/
 [Rr]elease/
