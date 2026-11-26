@@ -900,6 +900,73 @@ public sealed class SqlFinanceStore(string connectionString)
         }
     }
 
+    public async Task<IReadOnlyList<AccountGroupOption>> GetAccountGroupsAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        var rows = await connection.QueryAsync<AccountGroupOption>(new CommandDefinition("""
+            SELECT AccountGroupId AS Id, GroupCode AS Code, GroupName AS Name,
+                   AccountClass, ParentAccountGroupId AS ParentId
+              FROM gl.AccountGroup
+             WHERE IsActive = 1
+             ORDER BY GroupName;
+            """, cancellationToken: cancellationToken));
+        return rows.AsList();
+    }
+
+    public async Task<IReadOnlyList<LedgerOption>> GetLedgersAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        var rows = await connection.QueryAsync<LedgerOption>(new CommandDefinition("""
+            SELECT l.LedgerId AS Id, l.LedgerCode AS Code, l.LedgerName AS Name,
+                   l.LedgerType, l.AccountClass, COALESCE(g.GroupName, 'Unassigned') AS GroupName,
+                   l.IsGroupLedger, l.IsCash, l.IsBank, l.Editable, l.VisibleInBranch,
+                   l.IsDefaultGroup, l.LoadToBranch, l.ApplySanction, l.IsActive
+              FROM gl.Ledger l
+              LEFT JOIN gl.AccountGroup g ON g.AccountGroupId = l.AccountGroupId
+             ORDER BY l.LedgerName;
+            """, cancellationToken: cancellationToken));
+        return rows.AsList();
+    }
+
+    public async Task<AccountGroupOption> AddAccountGroupAsync(CreateAccountGroupRequest request, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        var row = await connection.QuerySingleAsync<AccountGroupOption>(new CommandDefinition("""
+            INSERT gl.AccountGroup(GroupCode, GroupName, AccountClass, ParentAccountGroupId)
+            OUTPUT INSERTED.AccountGroupId AS Id, INSERTED.GroupCode AS Code,
+                   INSERTED.GroupName AS Name, INSERTED.AccountClass, INSERTED.ParentAccountGroupId AS ParentId
+            VALUES (@Code, @Name, @AccountClass, @ParentId);
+            """, new { Code = request.Code.Trim().ToUpperInvariant(), Name = request.Name.Trim(),
+                AccountClass = request.AccountClass.Trim().ToUpperInvariant(), request.ParentId }, cancellationToken: cancellationToken));
+        return row;
+    }
+
+    public async Task<LedgerOption> AddLedgerAsync(CreateLedgerRequest request, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        var id = await connection.ExecuteScalarAsync<long>(new CommandDefinition("""
+            INSERT gl.Ledger(LedgerCode, LedgerName, LedgerType, AccountGroupId, AccountClass,
+                             IsGroupLedger, IsCash, IsBank, Editable, VisibleInBranch,
+                             IsDefaultGroup, LoadToBranch, ApplySanction)
+            OUTPUT INSERTED.LedgerId
+            VALUES (@Code, @Name, @LedgerType, @GroupId, @AccountClass,
+                    @IsGroupLedger, @IsCash, @IsBank, @Editable, @VisibleInBranch,
+                    @IsDefaultGroup, @LoadToBranch, @ApplySanction);
+            """, new { Code = request.Code.Trim().ToUpperInvariant(), Name = request.Name.Trim(),
+                LedgerType = string.IsNullOrWhiteSpace(request.LedgerType) ? null : request.LedgerType.Trim(),
+                request.GroupId, AccountClass = request.AccountClass.Trim().ToUpperInvariant(),
+                request.IsGroupLedger, request.IsCash, request.IsBank, request.Editable,
+                request.VisibleInBranch, request.IsDefaultGroup, request.LoadToBranch, request.ApplySanction }, cancellationToken: cancellationToken));
+        return await connection.QuerySingleAsync<LedgerOption>(new CommandDefinition("""
+            SELECT l.LedgerId AS Id, l.LedgerCode AS Code, l.LedgerName AS Name,
+                   l.LedgerType, l.AccountClass, COALESCE(g.GroupName, 'Unassigned') AS GroupName,
+                   l.IsGroupLedger, l.IsCash, l.IsBank, l.Editable, l.VisibleInBranch,
+                   l.IsDefaultGroup, l.LoadToBranch, l.ApplySanction, l.IsActive
+              FROM gl.Ledger l LEFT JOIN gl.AccountGroup g ON g.AccountGroupId = l.AccountGroupId
+             WHERE l.LedgerId = @Id;
+            """, new { Id = id }, cancellationToken: cancellationToken));
+    }
+
     public async Task<ReportData?> BuildReportAsync(
         string type,
         DateOnly from,

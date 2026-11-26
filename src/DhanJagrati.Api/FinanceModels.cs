@@ -137,6 +137,51 @@ public sealed record CreateVoucherRequest(
     string Mode,
     string Reference);
 
+public sealed record AccountGroupOption(
+    int Id,
+    string Code,
+    string Name,
+    string AccountClass,
+    int? ParentId);
+
+public sealed record LedgerOption(
+    long Id,
+    string Code,
+    string Name,
+    string? LedgerType,
+    string AccountClass,
+    string GroupName,
+    bool IsGroupLedger,
+    bool IsCash,
+    bool IsBank,
+    bool Editable,
+    bool VisibleInBranch,
+    bool IsDefaultGroup,
+    bool LoadToBranch,
+    bool ApplySanction,
+    bool IsActive);
+
+public sealed record CreateAccountGroupRequest(
+    string Code,
+    string Name,
+    string AccountClass,
+    int? ParentId = null);
+
+public sealed record CreateLedgerRequest(
+    string Code,
+    string Name,
+    string? LedgerType,
+    string AccountClass,
+    int? GroupId,
+    bool IsGroupLedger = false,
+    bool IsCash = false,
+    bool IsBank = false,
+    bool Editable = true,
+    bool VisibleInBranch = true,
+    bool IsDefaultGroup = false,
+    bool LoadToBranch = true,
+    bool ApplySanction = false);
+
 public sealed record DashboardSummary(
     int ActiveMembers,
     int ActiveLoans,

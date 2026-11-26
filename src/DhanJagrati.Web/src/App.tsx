@@ -31,11 +31,13 @@ import {
 import {
   api,
   type BranchInfo,
+  type AccountGroupOption,
   type Collection,
   type DashboardSummary,
   type Loan,
   type LoanApplication,
   type LoanProductOption,
+  type LedgerOption,
   type Member,
   type ReportData,
 } from './api'
@@ -114,6 +116,8 @@ function App() {
   const [collections, setCollections] = useState<Collection[]>([])
   const [branchName, setBranchName] = useState('')
   const [loanProducts, setLoanProducts] = useState<LoanProductOption[]>([])
+  const [accountGroups, setAccountGroups] = useState<AccountGroupOption[]>([])
+  const [ledgers, setLedgers] = useState<LedgerOption[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
@@ -130,7 +134,7 @@ function App() {
     setLoading(true)
     setError('')
     try {
-      const [dashboardData, memberRows, applicationRows, accountRows, collectionRows, branch, products] = await Promise.all([
+      const [dashboardData, memberRows, applicationRows, accountRows, collectionRows, branch, products, groups, ledgerRows] = await Promise.all([
         api.get<DashboardSummary>('/dashboard'),
         api.get<Member[]>('/members'),
         api.get<LoanApplication[]>('/loans'),
@@ -138,6 +142,8 @@ function App() {
         api.get<Collection[]>('/collections'),
         api.get<BranchInfo>('/branch'),
         api.get<LoanProductOption[]>('/loan-products'),
+        api.get<AccountGroupOption[]>('/accounting/groups'),
+        api.get<LedgerOption[]>('/accounting/ledgers'),
       ])
       setDashboard(dashboardData)
       setMembers(memberRows)
@@ -146,6 +152,8 @@ function App() {
       setCollections(collectionRows)
       setBranchName(branch.name)
       setLoanProducts(products)
+      setAccountGroups(groups)
+      setLedgers(ledgerRows)
     } catch (reason) {
       setError(errorMessage(reason))
     } finally {
@@ -344,7 +352,7 @@ function App() {
               {page === 'members' && <MembersPage members={filteredMembers} search={memberSearch} setSearch={setMemberSearch} openAdd={() => setModal('member')} />}
               {page === 'loans' && <LoansPage applications={applications} accounts={loanAccounts} activeTab={loanTab} setActiveTab={setLoanTab} decide={decide} disburse={disburse} openAdd={() => setModal('loan')} />}
               {page === 'collections' && <CollectionsPage accounts={loanAccounts} collections={collections} onSubmit={(event) => void submitForm(event, '/collections', 'Collection receipt recorded.')} />}
-              {page === 'accounting' && <AccountingPage onSubmit={(event) => void submitForm(event, '/accounting/vouchers', 'Balanced voucher posted.')} openReports={() => showPage('reports')} />}
+              {page === 'accounting' && <AccountingPage ledgers={ledgers} groups={accountGroups} onSubmit={(event) => void submitForm(event, '/accounting/vouchers', 'Balanced voucher posted.')} onSaved={() => void refresh()} openReports={() => showPage('reports')} />}
               {page === 'reports' && <ReportsPage report={report} reportType={reportType} setReportType={showReport} dateFrom={dateFrom} setDateFrom={setDateFrom} dateTo={dateTo} setDateTo={setDateTo} reportLoading={reportLoading} generate={generateReport} exportReport={exportReport} />}
             </>
           )}
@@ -510,7 +518,37 @@ function CollectionsPage({ accounts, collections, onSubmit }: { accounts: Loan[]
   </div>
 }
 
-function AccountingPage({ onSubmit, openReports }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void; openReports: () => void }) {
+function AccountingPage({ ledgers, groups, onSubmit, onSaved, openReports }: { ledgers: LedgerOption[]; groups: AccountGroupOption[]; onSubmit: (event: FormEvent<HTMLFormElement>) => void; onSaved: () => void; openReports: () => void }) {
+  const [ledgerMode, setLedgerMode] = useState<'ledger' | 'group'>('ledger')
+  const [ledgerError, setLedgerError] = useState('')
+
+  async function createLedger(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setLedgerError('')
+    const form = new FormData(event.currentTarget)
+    try {
+      await api.post('/accounting/ledgers', {
+        code: form.get('code'), name: form.get('name'), ledgerType: form.get('ledgerType'), accountClass: form.get('accountClass'),
+        groupId: form.get('groupId') ? Number(form.get('groupId')) : null, isCash: form.get('isCash') === 'on', isBank: form.get('isBank') === 'on',
+        visibleInBranch: form.get('visibleInBranch') === 'on', applySanction: form.get('applySanction') === 'on',
+      })
+      event.currentTarget.reset()
+      onSaved()
+    } catch (reason) { setLedgerError(errorMessage(reason)) }
+  }
+
+  async function createGroup(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setLedgerError('')
+    const form = new FormData(event.currentTarget)
+    try {
+      await api.post('/accounting/groups', { code: form.get('code'), name: form.get('name'), accountClass: form.get('accountClass') })
+      event.currentTarget.reset()
+      onSaved()
+    } catch (reason) { setLedgerError(errorMessage(reason)) }
+  }
+
+  const postingLedgers = ledgers.filter((ledger) => ledger.isActive && !ledger.isGroupLedger)
   return <div className="accounting-layout">
     <section className="panel form-panel">
       <div className="panel-heading"><div><h2>New journal voucher</h2><p>Debit and credit must balance before posting.</p></div><span className="panel-icon panel-icon-blue"><Landmark size={18} /></span></div>
@@ -518,8 +556,8 @@ function AccountingPage({ onSubmit, openReports }: { onSubmit: (event: FormEvent
         <div className="form-grid">
           <Field label="Voucher date" required><input name="voucherDate" type="date" defaultValue={today} required /></Field>
           <Field label="Payment mode" required><select name="mode"><option>Cash</option><option>Bank transfer</option><option>UPI</option><option>Cheque</option></select></Field>
-          <Field label="Debit ledger" required><select name="debitLedger"><option>Operating Expenses</option><option>Cash in Hand</option><option>Loan Portfolio</option></select></Field>
-          <Field label="Credit ledger" required><select name="creditLedger"><option>Cash in Hand</option><option>Share Capital</option><option>Interest Income</option></select></Field>
+          <Field label="Debit ledger" required><select name="debitLedger" required defaultValue=""><option value="" disabled>Select ledger</option>{postingLedgers.map((ledger) => <option key={ledger.id}>{ledger.name}</option>)}</select></Field>
+          <Field label="Credit ledger" required><select name="creditLedger" required defaultValue=""><option value="" disabled>Select ledger</option>{postingLedgers.map((ledger) => <option key={ledger.id}>{ledger.name}</option>)}</select></Field>
           <Field label="Amount" required><input name="amount" type="number" min="0.01" step="0.01" placeholder="₹ 0.00" required /></Field>
           <Field label="Cheque / reference"><input name="reference" placeholder="Optional" /></Field>
           <Field label="Narration" className="field-wide" required><textarea name="narration" rows={3} placeholder="Briefly describe this transaction" required /></Field>
@@ -529,6 +567,26 @@ function AccountingPage({ onSubmit, openReports }: { onSubmit: (event: FormEvent
       </form>
     </section>
     <div className="accounting-side">
+      <section className="panel ledger-editor">
+        <div className="panel-heading"><div><h2>{ledgerMode === 'ledger' ? 'Create ledger' : 'Create account group'}</h2><p>Maintain the accounts used in vouchers and reports.</p></div><span className="panel-icon panel-icon-blue"><Plus size={18} /></span></div>
+        <div className="segmented-tabs ledger-tabs"><button className={ledgerMode === 'ledger' ? 'active' : ''} onClick={() => setLedgerMode('ledger')}>Ledger</button><button className={ledgerMode === 'group' ? 'active' : ''} onClick={() => setLedgerMode('group')}>Group</button></div>
+        {ledgerError && <div className="inline-form-error">{ledgerError}</div>}
+        {ledgerMode === 'ledger' ? <form className="compact-form" onSubmit={(event) => void createLedger(event)}>
+          <Field label="Code" required><input name="code" maxLength={30} required placeholder="e.g. OFFICE_EXP" /></Field>
+          <Field label="Ledger name" required><input name="name" maxLength={150} required placeholder="e.g. Office expenses A/C" /></Field>
+          <Field label="Ledger type"><input name="ledgerType" placeholder="General / Bank / Cash" /></Field>
+          <Field label="Account class" required><select name="accountClass" defaultValue="EXPENSE"><option value="ASSET">Asset</option><option value="LIABILITY">Liability</option><option value="EQUITY">Equity</option><option value="INCOME">Income</option><option value="EXPENSE">Expense</option></select></Field>
+          <Field label="Under group"><select name="groupId" defaultValue=""><option value="">Unassigned</option>{groups.map((group) => <option value={group.id} key={group.id}>{group.name}</option>)}</select></Field>
+          <div className="check-grid"><label><input name="isCash" type="checkbox" /> Cash</label><label><input name="isBank" type="checkbox" /> Bank</label><label><input name="visibleInBranch" type="checkbox" defaultChecked /> Visible in branch</label><label><input name="applySanction" type="checkbox" /> Apply sanction</label></div>
+          <button className="button button-primary" type="submit"><Check size={15} /> Save ledger</button>
+        </form> : <form className="compact-form" onSubmit={(event) => void createGroup(event)}>
+          <Field label="Group code" required><input name="code" maxLength={30} required placeholder="e.g. CURRENT_ASSETS" /></Field>
+          <Field label="Group name" required><input name="name" maxLength={120} required placeholder="e.g. Current assets" /></Field>
+          <Field label="Account class" required><select name="accountClass" defaultValue="ASSET"><option value="ASSET">Asset</option><option value="LIABILITY">Liability</option><option value="EQUITY">Equity</option><option value="INCOME">Income</option><option value="EXPENSE">Expense</option></select></Field>
+          <button className="button button-primary" type="submit"><Check size={15} /> Save group</button>
+        </form>}
+      </section>
+      <section className="panel ledger-list"><div className="panel-heading"><div><h2>Ledger list</h2><p>{ledgers.length} accounts available</p></div></div><div className="ledger-list-scroll"><table><thead><tr><th>CODE</th><th>LEDGER NAME</th><th>GROUP</th><th>CLASS</th></tr></thead><tbody>{ledgers.slice(0, 8).map((ledger) => <tr key={ledger.id}><td className="mono">{ledger.code}</td><td>{ledger.name}</td><td>{ledger.groupName}</td><td>{ledger.accountClass}</td></tr>)}</tbody></table></div></section>
       <section className="panel journal-note"><div className="panel-icon panel-icon-gold"><FileText size={18} /></div><div className="eyebrow">ACCOUNTING SNAPSHOT</div><h2>One clear record,<br />from entry to report.</h2><p>Each voucher is represented as a balanced debit and credit. Use branch statements to review posted activity.</p><button className="text-button" onClick={openReports}>Explore financial reports <ArrowRight size={14} /></button></section>
       <section className="panel account-legend"><h3>Common ledgers</h3><div><span className="ledger-dot dot-blue" />Assets <small>Cash · loan portfolio</small></div><div><span className="ledger-dot dot-green" />Income <small>Interest income</small></div><div><span className="ledger-dot dot-rose" />Expenses <small>Operating expenses</small></div></section>
     </div>

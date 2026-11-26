@@ -81,6 +81,32 @@ export interface LoanProductOption {
   frequency: string
 }
 
+export interface AccountGroupOption {
+  id: number
+  code: string
+  name: string
+  accountClass: string
+  parentId: number | null
+}
+
+export interface LedgerOption {
+  id: number
+  code: string
+  name: string
+  ledgerType: string | null
+  accountClass: string
+  groupName: string
+  isGroupLedger: boolean
+  isCash: boolean
+  isBank: boolean
+  editable: boolean
+  visibleInBranch: boolean
+  isDefaultGroup: boolean
+  loadToBranch: boolean
+  applySanction: boolean
+  isActive: boolean
+}
+
 export interface ReportData {
   type: string
   title: string

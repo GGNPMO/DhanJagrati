@@ -341,6 +341,40 @@ app.MapPost("/api/accounting/vouchers",
         return Results.Created("/api/accounting/vouchers", report);
     });
 
+app.MapGet("/api/accounting/groups", async (SqlFinanceStore store, CancellationToken cancellationToken) =>
+    Results.Ok(await store.GetAccountGroupsAsync(cancellationToken)));
+
+app.MapGet("/api/accounting/ledgers", async (SqlFinanceStore store, CancellationToken cancellationToken) =>
+    Results.Ok(await store.GetLedgersAsync(cancellationToken)));
+
+app.MapPost("/api/accounting/groups", async (CreateAccountGroupRequest request, SqlFinanceStore store, CancellationToken cancellationToken) =>
+{
+    var allowedClasses = new[] { "ASSET", "LIABILITY", "EQUITY", "INCOME", "EXPENSE" };
+    if (string.IsNullOrWhiteSpace(request.Code) || string.IsNullOrWhiteSpace(request.Name) ||
+        !allowedClasses.Contains(request.AccountClass.Trim().ToUpperInvariant()))
+    {
+        return Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            ["group"] = ["Enter a group code, name and valid account class."]
+        });
+    }
+
+    return Results.Created("/api/accounting/groups", await store.AddAccountGroupAsync(request, cancellationToken));
+});
+
+app.MapPost("/api/accounting/ledgers", async (CreateLedgerRequest request, SqlFinanceStore store, CancellationToken cancellationToken) =>
+{
+    var allowedClasses = new[] { "ASSET", "LIABILITY", "EQUITY", "INCOME", "EXPENSE" };
+    var errors = new Dictionary<string, string[]>();
+    if (string.IsNullOrWhiteSpace(request.Code) || request.Code.Length > 30) errors["code"] = ["Ledger code is required and must be 30 characters or fewer."];
+    if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Length > 150) errors["name"] = ["Ledger name is required and must be 150 characters or fewer."];
+    if (!allowedClasses.Contains(request.AccountClass.Trim().ToUpperInvariant())) errors["accountClass"] = ["Select a valid account class."];
+    if (request.IsCash && request.IsBank) errors["cashBank"] = ["A ledger cannot be both cash and bank."];
+    if (errors.Count > 0) return Results.ValidationProblem(errors);
+
+    return Results.Created("/api/accounting/ledgers", await store.AddLedgerAsync(request, cancellationToken));
+});
+
 app.MapGet("/api/reports/types", () => Results.Ok(ReportCatalog.All));
 app.MapGet("/api/reports/{type}",
     async (string type, string? from, string? to, string? branch, SqlFinanceStore store, CancellationToken cancellationToken) =>
