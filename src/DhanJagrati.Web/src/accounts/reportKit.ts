@@ -5,11 +5,11 @@ import { useMe } from '../auth/session'
 import { formatAmount } from '../components/format'
 
 /** Branch choices for reports: the user's branches, plus "All branches" for administrators (value '0'). */
-export function useReportBranches() {
+export function useReportBranches(allowAll = true) {
   const { data: me } = useMe()
   const branches = useQuery({ queryKey: ['auth', 'branches'], queryFn: () => api.get<BranchOption[]>('/api/auth/branches'), staleTime: 5 * 60_000 })
   const options = (branches.data ?? []).map((b) => ({ value: String(b.branchId), label: b.branchName }))
-  if (me?.role === 'ADMIN') options.unshift({ value: '0', label: 'All branches (H.O.)' })
+  if (allowAll && me?.role === 'ADMIN') options.unshift({ value: '0', label: 'All branches (H.O.)' })
   const label = (value: string | null) => options.find((o) => o.value === value)?.label ?? me?.branchName ?? ''
   return { options, label }
 }

@@ -5,6 +5,7 @@
     <Project Path="src/DhanJagrati.Data/DhanJagrati.Data.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/DhanJagrati.Api.Tests/DhanJagrati.Api.Tests.csproj" />
     <Project Path="tests/DhanJagrati.Core.Tests/DhanJagrati.Core.Tests.csproj" />
   </Folder>
 </Solution>

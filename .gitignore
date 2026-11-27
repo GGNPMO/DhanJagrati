@@ -41,8 +41,11 @@ ScaffoldingReadMe.txt
 # dotenv environment variables file
 .env
 
-# Uploaded member photos / signatures (runtime data)
+# Uploaded member photos / signatures, data-protection keys (runtime data)
 App_Data/
+
+# Release package (deploy\publish.ps1)
+publish/
 
 # Others
 ~$*

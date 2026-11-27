@@ -11,7 +11,7 @@ public static class SessionAuth
     private const string SessionItemKey = "dj:session";
     public static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(60);
 
-    public static IServiceCollection AddSessionAuth(this IServiceCollection services)
+    public static IServiceCollection AddSessionAuth(this IServiceCollection services, IWebHostEnvironment env)
     {
         services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
             .AddCookie(o =>
@@ -19,7 +19,8 @@ public static class SessionAuth
                 o.Cookie.Name = "dj.auth";
                 o.Cookie.HttpOnly = true;
                 o.Cookie.SameSite = SameSiteMode.Strict;
-                o.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+                // Development runs over plain http behind Vite; everywhere else the cookie is HTTPS-only.
+                o.Cookie.SecurePolicy = env.IsDevelopment() ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
                 o.ExpireTimeSpan = TimeSpan.FromHours(10);
                 o.SlidingExpiration = true;
                 o.Events = new CookieAuthenticationEvents

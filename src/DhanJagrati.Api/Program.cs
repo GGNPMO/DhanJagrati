@@ -39,9 +39,11 @@ builder.Services.AddScoped<DhanJagrati.Data.Savings.SavingRepository>();
 builder.Services.AddScoped<DhanJagrati.Data.Accounts.LedgerRepository>();
 builder.Services.AddScoped<DhanJagrati.Data.Accounts.VoucherRepository>();
 builder.Services.AddScoped<DhanJagrati.Data.Accounts.ReportRepository>();
+builder.Services.AddScoped<LoanReportRepository>();
 builder.Services.AddSingleton<FileStore>();
 
-builder.Services.AddSessionAuth();
+builder.Services.AddHardening(builder.Configuration, builder.Environment);
+builder.Services.AddSessionAuth(builder.Environment);
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 builder.Services.AddOpenApi();
@@ -58,6 +60,7 @@ if (args.Length > 0 && args[0].Equals(CreateAdminCommand.Name, StringComparison.
     return await CreateAdminCommand.RunAsync(app.Services, args);
 
 app.UseExceptionHandler();
+app.UseHardening();
 app.UseStatusCodePages();
 app.UseMiddleware<ClientHeaderMiddleware>();
 app.UseAuthentication();
@@ -82,6 +85,10 @@ app.MapUserEndpoints();
 app.MapLoanEndpoints();
 app.MapRecoveryEndpoints();
 app.MapAccountEndpoints();
+app.MapLoanReportEndpoints();
 
 await app.RunAsync();
 return 0;
+
+/// <summary>Entry point type, exposed for WebApplicationFactory in the API tests.</summary>
+public partial class Program;

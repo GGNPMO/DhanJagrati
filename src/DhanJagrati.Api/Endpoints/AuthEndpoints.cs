@@ -30,7 +30,7 @@ public static class AuthEndpoints
     {
         var auth = app.MapGroup("/api/auth").WithTags("Auth");
 
-        auth.MapPost("/login", LoginAsync).AllowAnonymous();
+        auth.MapPost("/login", LoginAsync).AllowAnonymous().RequireRateLimiting(Hardening.LoginPolicy);
 
         var secured = auth.MapGroup("").RequireAuthorization();
         secured.MapPost("/logout", LogoutAsync);

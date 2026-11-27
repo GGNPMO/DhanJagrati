@@ -20,6 +20,7 @@ export function ReportFilters({
   toLabel = 'Date to',
   children,
   loading,
+  allowAllBranches = true,
 }: {
   value: RangeFilter
   onChange: (v: RangeFilter) => void
@@ -28,9 +29,10 @@ export function ReportFilters({
   toLabel?: string
   children?: ReactNode
   loading?: boolean
+  allowAllBranches?: boolean
 }) {
   const { data: me } = useMe()
-  const branches = useReportBranches()
+  const branches = useReportBranches(allowAllBranches)
   return (
     <Group align="flex-end" gap="sm" wrap="wrap">
       <Select

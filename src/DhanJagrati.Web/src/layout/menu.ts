@@ -29,12 +29,7 @@ export interface MenuSection {
   to?: string
 }
 
-const soon = (label: string, phase: number, dividerBefore = false): MenuItem => ({
-  label,
-  to: `/soon/${encodeURIComponent(label)}`,
-  phase,
-  dividerBefore,
-})
+const reportRoles: Role[] = ['ADMIN', 'MANAGER', 'ACCOUNTANT', 'OPERATOR']
 
 /** Navigation, mirroring the legacy MASTER / EMPLOYEE / LOAN / ACCOUNT / HELP sections. */
 export const menu: MenuSection[] = [
@@ -50,10 +45,10 @@ export const menu: MenuSection[] = [
       { label: 'Loan Recovery', to: '/recovery', dividerBefore: true },
       { label: 'Loan Bulk Recovery', to: '/bulk-recovery' },
       { label: 'Loan Settlement', to: '/settlement' },
-      soon('Loan Application Report', 6, true),
-      soon('Loan Recovery Due Report', 6),
-      soon('Loan Recovery Ledger', 6),
-      soon('Loan Closer Report', 6),
+      { label: 'Loan Application Report', to: '/loan-reports/applications', roles: reportRoles, dividerBefore: true },
+      { label: 'Loan Recovery Due Report', to: '/loan-reports/recovery-due', roles: reportRoles },
+      { label: 'Loan Recovery Ledger', to: '/loan-reports/recovery-ledger', roles: reportRoles },
+      { label: 'Loan Closer Report', to: '/loan-reports/closures', roles: reportRoles },
     ],
   },
   {
@@ -63,7 +58,7 @@ export const menu: MenuSection[] = [
       { label: 'Advisor / Relationship Manager', to: '/employees' },
       { label: 'Daily Attendance', to: '/attendance' },
       { label: 'Advisor Rank Master', to: '/masters/advisor-ranks' },
-      soon('Employee Wise Loan Report', 6, true),
+      { label: 'Employee Wise Loan Report', to: '/loan-reports/employee-wise', roles: ['ADMIN', 'MANAGER'], dividerBefore: true },
     ],
   },
   {
