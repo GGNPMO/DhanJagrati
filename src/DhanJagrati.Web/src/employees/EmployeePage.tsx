@@ -1,4 +1,5 @@
-import { Alert, Badge, Button, Grid, Group, Modal, ScrollArea, SimpleGrid, Stack, Table, Text, TextInput, Title } from '@mantine/core'
+import { Alert, Badge, Button, Grid, Group, Modal, ScrollArea, SimpleGrid, Stack, Table, Text, TextInput } from '@mantine/core'
+import { PageHeader } from '../components/PageHeader'
 import { notifications } from '@mantine/notifications'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
@@ -176,10 +177,11 @@ export function EmployeePage() {
 
   return (
     <Stack gap="md">
-      <Group justify="space-between" className="dj-no-print">
-        <Title order={3}>Advisor Entry Form</Title>
-        {ctl.mode !== 'view' && <Badge color="orange">{ctl.mode === 'new' ? 'New advisor' : 'Editing'}</Badge>}
-      </Group>
+      <PageHeader
+        title="Advisor / Relationship Manager"
+        subtitle={ctl.record ? `${ctl.record.employeeCode} · ${ctl.record.employeeName}` : 'Register a new advisor'}
+        badge={ctl.mode !== 'view' ? <Badge color="brand">{ctl.mode === 'new' ? 'New advisor' : 'Editing'}</Badge> : undefined}
+      />
       <RecordToolbar
         mode={ctl.mode}
         hasRecord={!!ctl.record}

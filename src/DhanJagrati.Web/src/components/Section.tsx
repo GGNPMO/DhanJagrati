@@ -1,15 +1,18 @@
-import { Box, Paper } from '@mantine/core'
+import { Box, Group, Paper } from '@mantine/core'
 import type { ReactNode } from 'react'
 
-/** Bordered section with the blue legacy-style heading bar. */
-export function Section({ title, children, right }: { title: ReactNode; children: ReactNode; right?: ReactNode }) {
+/** Card with a compact header row (icon + title, optional right-side actions). */
+export function Section({ title, children, right, icon, padding = 'md' }: { title: ReactNode; children: ReactNode; right?: ReactNode; icon?: ReactNode; padding?: string | number }) {
   return (
-    <Paper withBorder>
-      <Box className="dj-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span>{title}</span>
+    <Paper className="dj-card">
+      <div className="dj-section-head">
+        <Group gap={8} wrap="nowrap">
+          {icon && <span className="dj-section-icon" style={{ display: 'flex' }}>{icon}</span>}
+          <span>{title}</span>
+        </Group>
         {right}
-      </Box>
-      <Box p="md">{children}</Box>
+      </div>
+      <Box p={padding}>{children}</Box>
     </Paper>
   )
 }

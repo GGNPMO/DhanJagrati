@@ -11,8 +11,8 @@ Web replacement for the legacy desktop application (screens in `screen shot/`): 
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Login, Change Password, Select Branch, all masters, loan plans with configurable EMI, day closing, settings | **Done** |
-| 2 | Employee / Advisor, Customer (Member) | Planned |
-| 3 | Loan Application, Approve, Loan Card / Signature Card | Planned |
+| 2 | Employee / Advisor (introducer chain), Customer (Member) with photo/signature, Daily Attendance, User Master | **Done** |
+| 3 | Loan Application (calculator, deductions, guarantors, deposits), Loan Approve (schedule + disbursement voucher), Loan Card / Signature Card, dashboard, responsive redesign | **Done** |
 | 4 | Single & bulk recovery, settlement, Saving module screens | Planned |
 | 5 | Ledgers, Journal, Cash Book, Trial Balance, P&L, Balance Sheet | Planned |
 | 6 | Loan reports, Excel export, hardening | Planned |

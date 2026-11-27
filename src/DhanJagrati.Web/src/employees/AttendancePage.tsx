@@ -90,7 +90,7 @@ export function AttendancePage() {
         )}
       </Group>
       {day.isError && <Alert color="red">{errorMessage(day.error)}</Alert>}
-      <Paper withBorder>
+      <Paper className="dj-card">
         <Table striped withTableBorder verticalSpacing="xs">
           <Table.Thead>
             <Table.Tr>

@@ -137,7 +137,7 @@ export function UsersPage() {
         </Button>
       </Group>
       {users.isError && <Alert color="red">{errorMessage(users.error)}</Alert>}
-      <Paper withBorder>
+      <Paper className="dj-card">
         <Table striped highlightOnHover withTableBorder>
           <Table.Thead>
             <Table.Tr>

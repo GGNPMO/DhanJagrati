@@ -1,4 +1,5 @@
-import { Alert, Badge, Button, Checkbox, Grid, Group, Modal, SimpleGrid, Stack, Text, TextInput, Title } from '@mantine/core'
+import { Alert, Badge, Button, Checkbox, Grid, Group, Modal, SimpleGrid, Stack, Text, TextInput } from '@mantine/core'
+import { PageHeader } from '../components/PageHeader'
 import { useForm, useWatch } from 'react-hook-form'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
@@ -147,10 +148,11 @@ export function MemberPage() {
 
   return (
     <Stack gap="md">
-      <Group justify="space-between" className="dj-no-print">
-        <Title order={3}>Member Master Information</Title>
-        {ctl.mode !== 'view' && <Badge color="orange">{ctl.mode === 'new' ? 'New member' : 'Editing'}</Badge>}
-      </Group>
+      <PageHeader
+        title="Member Master"
+        subtitle={ctl.record ? `${ctl.record.memberNo} · ${ctl.record.memberName}` : 'Register a new customer'}
+        badge={ctl.mode !== 'view' ? <Badge color="brand">{ctl.mode === 'new' ? 'New member' : 'Editing'}</Badge> : undefined}
+      />
       <RecordToolbar
         mode={ctl.mode}
         hasRecord={!!ctl.record}

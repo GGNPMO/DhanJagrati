@@ -1,25 +1,194 @@
-body {
-  background: var(--mantine-color-gray-0);
+:root {
+  --dj-page-bg: #f4f6fa;
+  --dj-card-border: #e6e9f0;
+  --dj-muted: #6b7385;
 }
 
+:root[data-mantine-color-scheme='dark'] {
+  --dj-page-bg: #14161c;
+  --dj-card-border: #2c2f38;
+  --dj-muted: #9aa1b2;
+}
+
+body {
+  background: var(--dj-page-bg);
+  font-feature-settings: 'cv11', 'ss01';
+  -webkit-font-smoothing: antialiased;
+}
+
+.dj-main {
+  background: var(--dj-page-bg);
+}
+
+/* ---- Cards / sections ---- */
+.dj-card {
+  border: 1px solid var(--dj-card-border);
+  background: var(--mantine-color-body);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+.dj-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--dj-card-border);
+  font-weight: 600;
+  font-size: var(--mantine-font-size-sm);
+}
+
+.dj-section-head .dj-section-icon {
+  color: var(--mantine-color-brand-7);
+}
+
+/* Kept for pages that still use the legacy heading bar */
 .dj-section-title {
-  background: linear-gradient(90deg, var(--mantine-color-blue-8), var(--mantine-color-blue-5));
-  color: var(--mantine-color-white);
-  padding: 6px 12px;
-  border-radius: var(--mantine-radius-sm) var(--mantine-radius-sm) 0 0;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--dj-card-border);
+  font-weight: 600;
+  font-size: var(--mantine-font-size-sm);
+}
+
+/* ---- Sidebar ---- */
+.dj-navbar {
+  background: var(--mantine-color-navy-9);
+  border-right: none !important;
+  color: #d6ddea;
+}
+
+.dj-navbar .mantine-NavLink-root {
+  color: #c4cde0;
+  border-radius: var(--mantine-radius-md);
+  margin: 1px 0;
+}
+
+.dj-navbar .mantine-NavLink-root:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+
+.dj-navbar .mantine-NavLink-root[data-active] {
+  background: rgba(244, 120, 14, 0.18);
+  color: #ffb46b;
+}
+
+.dj-navbar .mantine-NavLink-root[data-active] .mantine-NavLink-label {
   font-weight: 600;
 }
 
+.dj-navbar .mantine-NavLink-children {
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  margin-left: 18px;
+  padding-left: 4px;
+}
+
+.dj-brand-mark {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, var(--mantine-color-brand-5), var(--mantine-color-brand-8));
+  flex-shrink: 0;
+}
+
+/* ---- Grids ---- */
 .dj-grid tbody tr {
   cursor: pointer;
 }
 
 .dj-grid tbody tr[data-selected='true'] {
-  background: var(--mantine-color-orange-0);
+  background: var(--mantine-color-brand-light);
 }
 
+.dj-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ---- Stat tiles ---- */
+.dj-stat-value {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Bar chart (dashboard) ---- */
+.dj-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  height: 180px;
+  padding: 0 4px;
+  border-bottom: 1px solid var(--dj-card-border);
+  background-image: linear-gradient(to top, var(--dj-card-border) 1px, transparent 1px);
+  background-size: 100% 45px;
+}
+
+.dj-bar-slot {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  cursor: default;
+}
+
+.dj-bar {
+  width: min(36px, 70%);
+  min-height: 2px;
+  border-radius: 4px 4px 0 0;
+  background: var(--mantine-color-brand-6);
+  transition: background 120ms;
+}
+
+.dj-bar-slot:hover .dj-bar {
+  background: var(--mantine-color-brand-8);
+}
+
+/* ---- Print: only the print area ---- */
 @media print {
+  @page {
+    margin: 12mm;
+  }
+  body {
+    background: #fff;
+  }
+  body * {
+    visibility: hidden;
+  }
+  .dj-print-area,
+  .dj-print-area * {
+    visibility: visible;
+  }
+  .dj-print-area {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+  }
   .dj-no-print {
     display: none !important;
   }
+}
+
+.dj-print-sheet {
+  background: #fff;
+  color: #111;
+  font-size: 13px;
+}
+
+.dj-print-sheet table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.dj-print-sheet th,
+.dj-print-sheet td {
+  border: 1px solid #999;
+  padding: 4px 6px;
 }

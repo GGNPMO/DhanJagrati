@@ -17,7 +17,7 @@ export function SettingsPage() {
   return (
     <Stack maw={900}>
       <Title order={3}>Settings</Title>
-      <Paper withBorder>
+      <Paper className="dj-card">
         <Box className="dj-section-title">Application Settings</Box>
         {settings.isError && <Alert color="red">{errorMessage(settings.error)}</Alert>}
         <Table withTableBorder verticalSpacing="sm">

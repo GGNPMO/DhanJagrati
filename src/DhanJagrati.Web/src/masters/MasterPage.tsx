@@ -208,7 +208,7 @@ export function MasterPage({ config }: { config: MasterConfig }) {
 
       <Grid gap="md">
         <Grid.Col span={{ base: 12, md: 5 }}>
-          <Paper withBorder>
+          <Paper className="dj-card">
             <Box className="dj-section-title">
               {selected ? `Edit ${config.title} #${selected.id}` : config.formTitle}
             </Box>
@@ -231,7 +231,7 @@ export function MasterPage({ config }: { config: MasterConfig }) {
         </Grid.Col>
 
         <Grid.Col span={{ base: 12, md: 7 }}>
-          <Paper withBorder>
+          <Paper className="dj-card">
             <Box className="dj-section-title">{config.listTitle}</Box>
             <Stack p="md" gap="sm">
               <Group grow>

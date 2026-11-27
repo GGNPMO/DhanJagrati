@@ -4,6 +4,7 @@ using DhanJagrati.Api.Infrastructure;
 using DhanJagrati.Data;
 using DhanJagrati.Data.Admin;
 using DhanJagrati.Data.Employees;
+using DhanJagrati.Data.Loans;
 using DhanJagrati.Data.Masters;
 using DhanJagrati.Data.Members;
 using DhanJagrati.Data.Security;
@@ -27,6 +28,11 @@ builder.Services.AddScoped<MemberRepository>();
 builder.Services.AddScoped<EmployeeRepository>();
 builder.Services.AddScoped<AttendanceRepository>();
 builder.Services.AddScoped<UserRepository>();
+builder.Services.AddScoped<DashboardRepository>();
+builder.Services.AddScoped<LoanTermsService>();
+builder.Services.AddScoped<LoanRepository>();
+builder.Services.AddScoped<LoanApprovalService>();
+builder.Services.AddScoped<LoanCardRepository>();
 builder.Services.AddSingleton<FileStore>();
 
 builder.Services.AddSessionAuth();
@@ -67,6 +73,7 @@ app.MapAdminEndpoints();
 app.MapMemberEndpoints();
 app.MapEmployeeEndpoints();
 app.MapUserEndpoints();
+app.MapLoanEndpoints();
 
 await app.RunAsync();
 return 0;

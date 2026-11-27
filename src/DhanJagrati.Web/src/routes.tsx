@@ -2,6 +2,9 @@ import { createBrowserRouter, Navigate } from 'react-router'
 import { AttendancePage } from './employees/AttendancePage'
 import { EmployeePage } from './employees/EmployeePage'
 import { ProtectedLayout } from './layout/ProtectedLayout'
+import { LoanApplicationPage } from './loans/LoanApplicationPage'
+import { LoanApprovePage } from './loans/LoanApprovePage'
+import { LoanCardPage } from './loans/LoanCardPage'
 import { MasterRoute } from './masters/MasterRoute'
 import { MemberPage } from './members/MemberPage'
 import { ChangePasswordPage } from './pages/ChangePasswordPage'
@@ -27,6 +30,10 @@ export const router = createBrowserRouter([
       { path: 'employees', element: <EmployeePage /> },
       { path: 'employees/:id', element: <EmployeePage /> },
       { path: 'attendance', element: <AttendancePage /> },
+      { path: 'loans', element: <LoanApplicationPage /> },
+      { path: 'loans/:id', element: <LoanApplicationPage /> },
+      { path: 'loan-approve', element: <LoanApprovePage /> },
+      { path: 'loan-cards', element: <LoanCardPage /> },
       { path: 'help/change-password', element: <ChangePasswordPage /> },
       { path: 'help/select-branch', element: <SelectBranchPage /> },
       { path: 'admin/settings', element: <SettingsPage /> },

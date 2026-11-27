@@ -3,7 +3,7 @@ import '@mantine/dates/styles.css'
 import '@mantine/notifications/styles.css'
 import './app.css'
 
-import { createTheme, MantineProvider } from '@mantine/core'
+import { MantineProvider } from '@mantine/core'
 import { DatesProvider } from '@mantine/dates'
 import { Notifications } from '@mantine/notifications'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -13,13 +13,7 @@ import { RouterProvider } from 'react-router'
 import { ApiError } from './api/client'
 import { meQueryKey } from './auth/session'
 import { router } from './routes'
-
-const theme = createTheme({
-  primaryColor: 'orange',
-  defaultRadius: 'sm',
-  fontFamily: 'Segoe UI, system-ui, -apple-system, sans-serif',
-  headings: { fontWeight: '600' },
-})
+import { theme } from './theme'
 
 const queryClient = new QueryClient({
   defaultOptions: {

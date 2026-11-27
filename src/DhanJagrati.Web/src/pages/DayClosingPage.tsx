@@ -37,7 +37,7 @@ export function DayClosingPage() {
   return (
     <Stack maw={760}>
       <Title order={3}>Date Closing - {me?.branchName}</Title>
-      <Paper withBorder>
+      <Paper className="dj-card">
         <Box className="dj-section-title">Close Login Date</Box>
         <Stack p="md">
           {alreadyClosed ? (
@@ -56,7 +56,7 @@ export function DayClosingPage() {
           {!canClose && <Text size="xs" c="dimmed">Only managers can close a date.</Text>}
         </Stack>
       </Paper>
-      <Paper withBorder>
+      <Paper className="dj-card">
         <Box className="dj-section-title">Closed Dates (last 60)</Box>
         <Table striped withTableBorder>
           <Table.Thead>
