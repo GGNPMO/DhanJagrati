@@ -13,8 +13,8 @@ Web replacement for the legacy desktop application (screens in `screen shot/`): 
 | 1 | Login, Change Password, Select Branch, all masters, loan plans with configurable EMI, day closing, settings | **Done** |
 | 2 | Employee / Advisor (introducer chain), Customer (Member) with photo/signature, Daily Attendance, User Master | **Done** |
 | 3 | Loan Application (calculator, deductions, guarantors, deposits), Loan Approve (schedule + disbursement voucher), Loan Card / Signature Card, dashboard, responsive redesign | **Done** |
-| 4 | Single & bulk recovery, settlement, Saving module screens | Planned |
-| 5 | Ledgers, Journal, Cash Book, Trial Balance, P&L, Balance Sheet | Planned |
+| 4 | Single & bulk recovery (receipts, late fee, reversal), settlement (pre-close / re-open), Saving module (accounts, deposit/withdrawal, statement, recovery from saving) | **Done** |
+| 5 | Groups & Ledgers (tree, opening balances), Ledger Transaction Journal (payment/receipt/journal/contra/branch transfer, cancel), Cash Book, Ledger Statement, Trial Balance, P&L, Balance Sheet (print + CSV) | **Done** |
 | 6 | Loan reports, Excel export, hardening | Planned |
 
 ## Database setup
@@ -23,10 +23,11 @@ Run once against a new SQL Server (creates database `DhanJagrati`), then apply t
 
 ```powershell
 sqlcmd -S <server> -d master -U <login> -C -b -i scheema\dhanjagrati.sql
-sqlcmd -S <server> -d DhanJagrati -U <login> -C -b -i scheema\dhanjagrati_patches\001_emi_config_saving_interbranch.sql
+sqlcmd -S <server> -d DhanJagrati -U <login> -C -b -I -i scheema\dhanjagrati_patches\001_emi_config_saving_interbranch.sql
+sqlcmd -S <server> -d DhanJagrati -U <login> -C -b -I -i scheema\dhanjagrati_patches\002_recovery_settlement.sql
 ```
 
-Patches record themselves in `sec.SchemaVersion` and are skipped if already applied. The API requires patch 001.
+Patches record themselves in `sec.SchemaVersion` and are skipped if already applied. The API requires all patches. Use `-I` (quoted identifiers on); tables with computed columns reject writes without it.
 
 ## Configuration
 

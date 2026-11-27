@@ -1,4 +1,11 @@
 import { createBrowserRouter, Navigate } from 'react-router'
+import { BalanceSheetPage } from './accounts/BalanceSheetPage'
+import { CashBookPage } from './accounts/CashBookPage'
+import { LedgersPage } from './accounts/LedgersPage'
+import { LedgerStatementPage } from './accounts/LedgerStatementPage'
+import { ProfitLossPage } from './accounts/ProfitLossPage'
+import { TrialBalancePage } from './accounts/TrialBalancePage'
+import { VoucherPage } from './accounts/VoucherPage'
 import { AttendancePage } from './employees/AttendancePage'
 import { EmployeePage } from './employees/EmployeePage'
 import { ProtectedLayout } from './layout/ProtectedLayout'
@@ -7,6 +14,11 @@ import { LoanApprovePage } from './loans/LoanApprovePage'
 import { LoanCardPage } from './loans/LoanCardPage'
 import { MasterRoute } from './masters/MasterRoute'
 import { MemberPage } from './members/MemberPage'
+import { BulkRecoveryPage } from './recovery/BulkRecoveryPage'
+import { RecoveryPage } from './recovery/RecoveryPage'
+import { SettlementPage } from './recovery/SettlementPage'
+import { SavingAccountPage } from './savings/SavingAccountPage'
+import { SavingAccountsPage } from './savings/SavingAccountsPage'
 import { ChangePasswordPage } from './pages/ChangePasswordPage'
 import { ComingSoonPage } from './pages/ComingSoonPage'
 import { DayClosingPage } from './pages/DayClosingPage'
@@ -34,6 +46,18 @@ export const router = createBrowserRouter([
       { path: 'loans/:id', element: <LoanApplicationPage /> },
       { path: 'loan-approve', element: <LoanApprovePage /> },
       { path: 'loan-cards', element: <LoanCardPage /> },
+      { path: 'recovery', element: <RecoveryPage /> },
+      { path: 'bulk-recovery', element: <BulkRecoveryPage /> },
+      { path: 'settlement', element: <SettlementPage /> },
+      { path: 'savings', element: <SavingAccountsPage /> },
+      { path: 'savings/:id', element: <SavingAccountPage /> },
+      { path: 'ledgers', element: <LedgersPage /> },
+      { path: 'journal', element: <VoucherPage /> },
+      { path: 'cash-book', element: <CashBookPage /> },
+      { path: 'trial-balance', element: <TrialBalancePage /> },
+      { path: 'profit-loss', element: <ProfitLossPage /> },
+      { path: 'balance-sheet', element: <BalanceSheetPage /> },
+      { path: 'ledger-statement', element: <LedgerStatementPage /> },
       { path: 'help/change-password', element: <ChangePasswordPage /> },
       { path: 'help/select-branch', element: <SelectBranchPage /> },
       { path: 'admin/settings', element: <SettingsPage /> },

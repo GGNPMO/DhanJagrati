@@ -151,8 +151,15 @@ body {
   background: var(--mantine-color-brand-8);
 }
 
+.dj-print-only {
+  display: none;
+}
+
 /* ---- Print: only the print area ---- */
 @media print {
+  .dj-print-only {
+    display: block;
+  }
   @page {
     margin: 12mm;
   }

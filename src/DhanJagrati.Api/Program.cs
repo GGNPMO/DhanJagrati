@@ -33,6 +33,12 @@ builder.Services.AddScoped<LoanTermsService>();
 builder.Services.AddScoped<LoanRepository>();
 builder.Services.AddScoped<LoanApprovalService>();
 builder.Services.AddScoped<LoanCardRepository>();
+builder.Services.AddScoped<DhanJagrati.Data.Recovery.RecoveryService>();
+builder.Services.AddScoped<DhanJagrati.Data.Recovery.SettlementService>();
+builder.Services.AddScoped<DhanJagrati.Data.Savings.SavingRepository>();
+builder.Services.AddScoped<DhanJagrati.Data.Accounts.LedgerRepository>();
+builder.Services.AddScoped<DhanJagrati.Data.Accounts.VoucherRepository>();
+builder.Services.AddScoped<DhanJagrati.Data.Accounts.ReportRepository>();
 builder.Services.AddSingleton<FileStore>();
 
 builder.Services.AddSessionAuth();
@@ -74,6 +80,8 @@ app.MapMemberEndpoints();
 app.MapEmployeeEndpoints();
 app.MapUserEndpoints();
 app.MapLoanEndpoints();
+app.MapRecoveryEndpoints();
+app.MapAccountEndpoints();
 
 await app.RunAsync();
 return 0;
