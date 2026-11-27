@@ -1,0 +1,38 @@
+import { createBrowserRouter, Navigate } from 'react-router'
+import { AttendancePage } from './employees/AttendancePage'
+import { EmployeePage } from './employees/EmployeePage'
+import { ProtectedLayout } from './layout/ProtectedLayout'
+import { MasterRoute } from './masters/MasterRoute'
+import { MemberPage } from './members/MemberPage'
+import { ChangePasswordPage } from './pages/ChangePasswordPage'
+import { ComingSoonPage } from './pages/ComingSoonPage'
+import { DayClosingPage } from './pages/DayClosingPage'
+import { HomePage } from './pages/HomePage'
+import { LoginPage } from './pages/LoginPage'
+import { SelectBranchPage } from './pages/SelectBranchPage'
+import { SettingsPage } from './pages/SettingsPage'
+import { UsersPage } from './pages/UsersPage'
+
+export const router = createBrowserRouter([
+  { path: '/login', element: <LoginPage /> },
+  {
+    path: '/',
+    element: <ProtectedLayout />,
+    children: [
+      { index: true, element: <HomePage /> },
+      { path: 'masters/:entity', element: <MasterRoute /> },
+      { path: 'day-closing', element: <DayClosingPage /> },
+      { path: 'members', element: <MemberPage /> },
+      { path: 'members/:id', element: <MemberPage /> },
+      { path: 'employees', element: <EmployeePage /> },
+      { path: 'employees/:id', element: <EmployeePage /> },
+      { path: 'attendance', element: <AttendancePage /> },
+      { path: 'help/change-password', element: <ChangePasswordPage /> },
+      { path: 'help/select-branch', element: <SelectBranchPage /> },
+      { path: 'admin/settings', element: <SettingsPage /> },
+      { path: 'admin/users', element: <UsersPage /> },
+      { path: 'soon/:feature', element: <ComingSoonPage /> },
+      { path: '*', element: <Navigate to="/" replace /> },
+    ],
+  },
+])

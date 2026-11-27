@@ -1,101 +1,85 @@
-# Dhan Jagrati Microfinance Ltd
+# Dhan Jagrati Microfinance Foundation
 
-A small web-first microfinance operations workspace. The solution uses a .NET 10 Minimal API, a React 19 + TypeScript client, and SQL Server persistence based on `scheema\microfinance_schema.sql`.
+Web replacement for the legacy desktop application (screens in `screen shot/`): **Master, Employee, Loan, Account and Help** sections, plus an optional Saving module.
 
-## Prerequisites
+- **API:** .NET 10 minimal API + Dapper (`src/DhanJagrati.Api`, `src/DhanJagrati.Data`, `src/DhanJagrati.Core`)
+- **UI:** React 19 + TypeScript, Vite, Mantine 9, TanStack Query, React Hook Form + Zod (`src/DhanJagrati.Web`)
+- **Database:** SQL Server 2017+ (`scheema/dhanjagrati.sql` + patches in `scheema/dhanjagrati_patches/`)
 
-- .NET 10 SDK
-- Node.js 22 or later and npm
-- SQL Server 2017 or later (the reports use `STRING_AGG`)
-- Windows PowerShell for the commands below
+## Status
+
+| Phase | Scope | State |
+|---|---|---|
+| 1 | Login, Change Password, Select Branch, all masters, loan plans with configurable EMI, day closing, settings | **Done** |
+| 2 | Employee / Advisor, Customer (Member) | Planned |
+| 3 | Loan Application, Approve, Loan Card / Signature Card | Planned |
+| 4 | Single & bulk recovery, settlement, Saving module screens | Planned |
+| 5 | Ledgers, Journal, Cash Book, Trial Balance, P&L, Balance Sheet | Planned |
+| 6 | Loan reports, Excel export, hardening | Planned |
 
 ## Database setup
 
-The API requires a SQL Server connection string named `Microfinance`. Keep credentials out of tracked configuration and configure a local .NET User Secret:
+Run once against a new SQL Server (creates database `DhanJagrati`), then apply the patches in order. Use `-b` so an error stops the script:
 
 ```powershell
-dotnet user-secrets set "ConnectionStrings:Microfinance" "Server=ARUN\SA;Database=DhanJagrati_MFI;User ID=YOUR_SQL_LOGIN;Password=YOUR_SQL_PASSWORD;Encrypt=True;TrustServerCertificate=True;" --project src\DhanJagrati.Api\DhanJagrati.Api.csproj
+sqlcmd -S <server> -d master -U <login> -C -b -i scheema\dhanjagrati.sql
+sqlcmd -S <server> -d DhanJagrati -U <login> -C -b -i scheema\dhanjagrati_patches\001_emi_config_saving_interbranch.sql
 ```
 
-Replace the login and password placeholders with a SQL login that can create/use the database and execute the schema. `TrustServerCertificate=True` is for local development only; production should use a valid SQL Server TLS certificate and a managed secret.
+Patches record themselves in `sec.SchemaVersion` and are skipped if already applied. The API requires patch 001.
 
-For a fresh database, run the bootstrap schema once from the repository root (SQLCMD prompts for the SQL password when `-P` is omitted):
+## Configuration
+
+Connection string `ConnectionStrings:DhanJagrati`: keep credentials out of tracked files. Use user-secrets locally and the `ConnectionStrings__DhanJagrati` environment variable on servers:
 
 ```powershell
-sqlcmd -S "ARUN\SA" -d master -U YOUR_SQL_LOGIN -C -b -i scheema\microfinance_schema.sql
-sqlcmd -S "ARUN\SA" -d DhanJagrati_MFI -U YOUR_SQL_LOGIN -C -b -i scheema\migrations\001_sql_api_support.sql
+dotnet user-secrets set "ConnectionStrings:DhanJagrati" "Server=<server>;Database=DhanJagrati;User ID=<login>;Password=<password>;Encrypt=True;TrustServerCertificate=True;" --project src\DhanJagrati.Api
 ```
 
-The bootstrap creates `DhanJagrati_MFI`, schemas, tables, procedures, and seed records. Do not rerun it against an initialized or populated database. For an existing installation of the base schema, run only the idempotent API-support migration. Back up existing data before applying schema changes.
+`TrustServerCertificate=True` is for local development only.
+
+## First administrator (one-time)
+
+The schema seeds the `SYSTEM` admin without a password. Set a temporary one from the server console (it is prompted for, never stored in config) and change it at first login:
+
+```powershell
+dotnet run --project src\DhanJagrati.Api -- create-admin --user SYSTEM
+# published build:  dotnet DhanJagrati.Api.dll create-admin --user SYSTEM
+```
+
+The command refuses to overwrite an existing password; `--reset` is the recovery path for a locked-out or forgotten admin password.
 
 ## Run locally
 
-Configure the User Secret above before starting the API. Open two terminals from the repository root. Start the API:
-
 ```powershell
+# Terminal 1 - API
 $env:ASPNETCORE_ENVIRONMENT = "Development"
-dotnet run --project src\DhanJagrati.Api\DhanJagrati.Api.csproj --no-launch-profile -- --urls http://localhost:5072
-```
+dotnet run --project src\DhanJagrati.Api --no-launch-profile -- --urls http://localhost:5072
 
-In the second terminal, install the frontend dependencies and start Vite:
-
-```powershell
+# Terminal 2 - UI (proxies /api to the API)
 Set-Location src\DhanJagrati.Web
 npm ci
 npm run dev
 ```
 
-Open the Vite URL (normally `http://localhost:5173`). The Vite development server proxies `/api` requests to the API at `http://localhost:5072`.
+Open http://localhost:5173 and sign in as `SYSTEM` with the temporary password. Health check: `Invoke-RestMethod http://localhost:5072/api/health`. OpenAPI document (Development): `http://localhost:5072/openapi/v1.json`.
 
-Check SQL Server connectivity and that the API is responding:
-
-```powershell
-Invoke-RestMethod http://localhost:5072/api/health
-```
-
-Stop either development server with `Ctrl+C`.
-
-## Build and preview locally
-
-From the repository root, build both applications in Release mode:
+## Tests and build
 
 ```powershell
-dotnet build src\DhanJagrati.Api\DhanJagrati.Api.csproj --configuration Release
-Set-Location src\DhanJagrati.Web
-npm ci
-npm run build
-npm run preview
+dotnet test
+dotnet build DhanJagrati.slnx -c Release
+Set-Location src\DhanJagrati.Web; npm run build; npm run lint
 ```
 
-Vite writes the production frontend to `src\DhanJagrati.Web\dist`. Its preview server is for local review only; it is not a production web server. The API can be published separately:
+## Key design points
 
-```powershell
-Set-Location ..\..
-dotnet publish src\DhanJagrati.Api\DhanJagrati.Api.csproj --configuration Release --output publish\api
-```
+- **Sessions:** cookie authentication (HttpOnly, SameSite=Strict). Branch and login date live in `sec.UserSession` on the server and are never taken from the browser. Back-dating is limited to Admin/Manager.
+- **Masters:** one generic API (`/api/masters/{entity}`) and one React page driven by `MasterRegistry.cs` / `configs.tsx`. Center and Group are branch-scoped.
+- **EMI calculation is configurable per loan plan** (`MANUAL`, `FLAT`, `REDUCING`, `FACTOR`, plus rounding and schedule split), because the legacy formula is not confirmed yet. Plans default to `MANUAL`. The legacy EPL-11 values fit `FACTOR = 0.111`. Each loan stores a snapshot of the method used.
+- **Saving module:** separate `sav` schema, linked to loans only through nullable columns and ledger mappings; switched on with the `MODULE.SAVING.ENABLED` setting.
+- **Inter-branch transfers:** post through `INTER BRANCH A/C` so each branch balances on its own (`acc.vw_UnbalancedVouchers` checks this per branch).
 
 ## Deployment outline (Windows Server / IIS)
 
-The frontend calls relative `/api` URLs. Deploy both parts behind the same HTTPS origin so browser requests remain same-origin:
-
-1. Build the React app and publish the API using the commands above.
-2. Host the contents of `src\DhanJagrati.Web\dist` as the IIS website's static files.
-3. Install the .NET 10 ASP.NET Core Hosting Bundle on the server. Run the published API on a loopback-only address (for example, `http://127.0.0.1:5072`) using IIS hosting or an approved Windows service/process manager.
-4. Configure IIS URL Rewrite with Application Request Routing (ARR), or an equivalent reverse proxy, to forward `/api/*` to the API. Enable HTTPS for the public site; do not expose the API's loopback listener publicly.
-5. Verify the public site's `/api/health`, then exercise the member, loan, collection, and report flows in a non-production environment.
-
-The current Vite proxy is development-only; it is not included in the deployed static files. The API's CORS allowlist is also limited to localhost development origins. A same-origin reverse proxy avoids requiring browser CORS, but any cross-origin deployment needs an explicit, environment-specific CORS policy before release.
-
-## Production readiness
-
-The API uses SQL Server for reads and writes; it does not fall back to in-memory demo data. The current app still lacks authentication and server-side branch authorization, and it has not been hardened for production financial operations. Before production, implement access control and branch isolation, auditing, monitored database migrations, backups, and production-grade secret/TLS management. Verify all financial workflows against a non-production database first.
-
-## Included workflows
-
-- Branch overview with portfolio, due accounts and recent receipts.
-- Member directory and member registration.
-- Loan application creation, approval/decline, disbursement and active-account views.
-- Single collections with receipt history.
-- Balanced general-ledger voucher entry.
-- Cashbook summary/detail, trial balance, profit & loss, balance sheet, application, recovery, relationship-manager and closure reports.
-- Report date filters, CSV export and print layout.
+Serve `src\DhanJagrati.Web\dist` as static files and reverse-proxy `/api/*` to the published API (`dotnet publish src\DhanJagrati.Api -c Release -o publish\api`) on a loopback address, all behind one HTTPS origin. Do not expose the API port publicly.

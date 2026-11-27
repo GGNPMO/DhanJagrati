@@ -1,0 +1,25 @@
+body {
+  background: var(--mantine-color-gray-0);
+}
+
+.dj-section-title {
+  background: linear-gradient(90deg, var(--mantine-color-blue-8), var(--mantine-color-blue-5));
+  color: var(--mantine-color-white);
+  padding: 6px 12px;
+  border-radius: var(--mantine-radius-sm) var(--mantine-radius-sm) 0 0;
+  font-weight: 600;
+}
+
+.dj-grid tbody tr {
+  cursor: pointer;
+}
+
+.dj-grid tbody tr[data-selected='true'] {
+  background: var(--mantine-color-orange-0);
+}
+
+@media print {
+  .dj-no-print {
+    display: none !important;
+  }
+}

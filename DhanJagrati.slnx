@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DhanJagrati.Api/DhanJagrati.Api.csproj" />
+    <Project Path="src/DhanJagrati.Core/DhanJagrati.Core.csproj" />
+    <Project Path="src/DhanJagrati.Data/DhanJagrati.Data.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DhanJagrati.Core.Tests/DhanJagrati.Core.Tests.csproj" />
+  </Folder>
+</Solution>
