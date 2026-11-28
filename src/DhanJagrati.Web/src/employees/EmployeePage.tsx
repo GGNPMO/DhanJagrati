@@ -14,7 +14,8 @@ import { RecordToolbar } from '../components/RecordToolbar'
 import { SearchModal } from '../components/SearchModal'
 import { Section } from '../components/Section'
 import { useRecordController } from '../components/useRecordController'
-import type { MemberSummary } from '../members/types'
+import { useCodePicker } from '../components/useCodePicker'
+import type { MemberListItem, MemberSummary } from '../members/types'
 import type { ChainLink, EmployeeDetail, EmployeeListItem, EmployeeSummary } from './types'
 
 const feeModes = ['CASH', 'CHEQUE', 'NEFT', 'UPI'].map((v) => ({ value: v, label: v }))
@@ -133,8 +134,9 @@ export function EmployeePage() {
       : null
   const introducerRank = introducer?.employeeCode === introducerCode?.trim().toUpperCase() ? introducer.rankNo : ctl.record?.introducerRankNo
 
-  const lookupIntroducer = async () => {
-    const code = form.getValues('introducerCode').trim()
+  const lookupIntroducer = async (picked: string) => {
+    form.setValue('introducerCode', picked, { shouldDirty: true })
+    const code = picked.trim()
     if (!code) {
       setIntroducer(null)
       return
@@ -151,8 +153,8 @@ export function EmployeePage() {
   }
 
   /** Fill personal details from an existing member (advisor joins as a member). */
-  const fetchMember = async () => {
-    const memberNo = form.getValues('memberNo').trim()
+  const fetchMember = async (picked: string) => {
+    const memberNo = picked.trim()
     if (!memberNo) return
     try {
       const m = await api.get<MemberSummary>(`/api/members/lookup?memberNo=${encodeURIComponent(memberNo)}`)
@@ -174,6 +176,32 @@ export function EmployeePage() {
       form.setError('memberNo', { message: error instanceof ApiError && error.status === 404 ? 'Member not found.' : errorMessage(error) })
     }
   }
+
+  const memberPicker = useCodePicker<MemberListItem>({
+    searchUrl: '/api/members',
+    codeOf: (m) => m.memberNo,
+    onPicked: fetchMember,
+    title: 'Select member',
+    columns: [
+      { label: 'Member No', render: (r) => r.memberNo },
+      { label: 'Name', render: (r) => r.memberName },
+      { label: 'Guardian', render: (r) => r.guardianName },
+      { label: 'Mobile', render: (r) => r.mobileNo },
+    ],
+  })
+
+  const introducerPicker = useCodePicker<EmployeeListItem>({
+    searchUrl: '/api/employees?allBranches=true&activeOnly=true',
+    codeOf: (e) => e.employeeCode,
+    onPicked: lookupIntroducer,
+    title: 'Select introducer',
+    columns: [
+      { label: 'Code', render: (r) => r.employeeCode },
+      { label: 'Name', render: (r) => r.employeeName },
+      { label: 'Rank', render: (r) => r.rankCode },
+      { label: 'Branch', render: (r) => r.branchName },
+    ],
+  })
 
   return (
     <Stack gap="md">
@@ -220,7 +248,7 @@ export function EmployeePage() {
                   <TextField control={c} name="introducerCode" label="Introducer Code" disabled={ro} maxLength={20} placeholder="Blank = company" />
                 </Grid.Col>
                 <Grid.Col span={{ base: 6, sm: 2 }}>
-                  <Button variant="light" fullWidth disabled={ro} onClick={lookupIntroducer}>
+                  <Button variant="light" fullWidth disabled={ro} onClick={() => introducerPicker.find(form.getValues('introducerCode'))}>
                     Find
                   </Button>
                 </Grid.Col>
@@ -245,7 +273,7 @@ export function EmployeePage() {
                   <TextField control={c} name="memberNo" label="Member Code" disabled={ro} maxLength={20} />
                 </Grid.Col>
                 <Grid.Col span={{ base: 4, sm: 2 }}>
-                  <Button variant="light" fullWidth disabled={ro} onClick={fetchMember}>
+                  <Button variant="light" fullWidth disabled={ro} onClick={() => memberPicker.find(form.getValues('memberNo'))}>
                     Fetch
                   </Button>
                 </Grid.Col>
@@ -361,6 +389,8 @@ export function EmployeePage() {
         </Grid.Col>
       </Grid>
 
+      {memberPicker.modal}
+      {introducerPicker.modal}
       <SearchModal<EmployeeListItem>
         opened={searchOpen}
         title="Search Advisor"

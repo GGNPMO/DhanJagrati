@@ -40,8 +40,9 @@ import { RecordToolbar } from '../components/RecordToolbar'
 import { SearchModal } from '../components/SearchModal'
 import { Section } from '../components/Section'
 import { useRecordController } from '../components/useRecordController'
-import type { EmployeeSummary } from '../employees/types'
-import type { MemberSummary } from '../members/types'
+import { useCodePicker } from '../components/useCodePicker'
+import type { EmployeeListItem, EmployeeSummary } from '../employees/types'
+import type { MemberListItem, MemberSummary } from '../members/types'
 import { ScheduleTable } from './ScheduleTable'
 import { emiModeLabel, statusColor } from './status'
 import type { LoanDetail, LoanListItem, LoanTerms, ScheduleRow } from './types'
@@ -279,8 +280,8 @@ export function LoanApplicationPage() {
   const amount = Number(loanAmount) || 0
   const net = amount - effectiveFee - (Number(gst) || 0) - (Number(share) || 0) - (Number(insurance) || 0)
 
-  const lookupMember = async () => {
-    const no = form.getValues('memberNo').trim()
+  const lookupMember = async (picked: string) => {
+    const no = picked.trim()
     if (!no) return
     try {
       const m = await api.get<MemberSummary>(`/api/members/lookup?memberNo=${encodeURIComponent(no)}`)
@@ -295,8 +296,8 @@ export function LoanApplicationPage() {
     }
   }
 
-  const lookupEmployee = async () => {
-    const code = form.getValues('employeeCode').trim()
+  const lookupEmployee = async (picked: string) => {
+    const code = picked.trim()
     if (!code) return
     try {
       const e = await api.get<EmployeeSummary>(`/api/employees/lookup?code=${encodeURIComponent(code)}`)
@@ -309,6 +310,32 @@ export function LoanApplicationPage() {
       form.setError('employeeCode', { message: error instanceof ApiError && error.status === 404 ? 'Employee code not found.' : errorMessage(error) })
     }
   }
+
+  // Find buttons: exact code -> applied; partial number / name -> search dialog (members of this branch)
+  const memberPicker = useCodePicker<MemberListItem>({
+    searchUrl: '/api/members',
+    codeOf: (m) => m.memberNo,
+    onPicked: lookupMember,
+    title: 'Select member',
+    columns: [
+      { label: 'Member No', render: (r) => r.memberNo },
+      { label: 'Name', render: (r) => r.memberName },
+      { label: 'Guardian', render: (r) => r.guardianName },
+      { label: 'Mobile', render: (r) => r.mobileNo },
+    ],
+  })
+  const employeePicker = useCodePicker<EmployeeListItem>({
+    searchUrl: '/api/employees?allBranches=true&activeOnly=true',
+    codeOf: (e) => e.employeeCode,
+    onPicked: lookupEmployee,
+    title: 'Select relationship manager',
+    columns: [
+      { label: 'Code', render: (r) => r.employeeCode },
+      { label: 'Name', render: (r) => r.employeeName },
+      { label: 'Rank', render: (r) => r.rankCode },
+      { label: 'Branch', render: (r) => r.branchName },
+    ],
+  })
 
   const status = record?.status
   const calcError = calc.error instanceof ApiError ? Object.values(calc.error.fieldErrors)[0] ?? calc.error.message : calc.error ? errorMessage(calc.error) : null
@@ -376,7 +403,7 @@ export function LoanApplicationPage() {
                   <TextField control={c} name="memberNo" label="Member No." required disabled={ro} maxLength={20} />
                 </Grid.Col>
                 <Grid.Col span={{ base: 4, sm: 2 }}>
-                  <Button fullWidth variant="light" leftSection={<IconSearch size={16} />} disabled={ro} onClick={lookupMember}>
+                  <Button fullWidth variant="light" leftSection={<IconSearch size={16} />} disabled={ro} onClick={() => memberPicker.find(form.getValues('memberNo'))}>
                     Find
                   </Button>
                 </Grid.Col>
@@ -618,7 +645,7 @@ export function LoanApplicationPage() {
                   <div style={{ flex: 1 }}>
                     <TextField control={c} name="employeeCode" label="Emp. Code" required disabled={ro} maxLength={20} />
                   </div>
-                  <Button variant="light" disabled={ro} onClick={lookupEmployee}>
+                  <Button variant="light" disabled={ro} onClick={() => employeePicker.find(form.getValues('employeeCode'))}>
                     Find
                   </Button>
                 </Group>
@@ -662,6 +689,8 @@ export function LoanApplicationPage() {
         </Grid.Col>
       </Grid>
 
+      {memberPicker.modal}
+      {employeePicker.modal}
       <SearchModal<LoanListItem>
         opened={searchOpen}
         title="Search loan application"

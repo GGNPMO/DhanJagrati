@@ -1,3 +1,4 @@
+import { Center, Loader } from '@mantine/core'
 import { createBrowserRouter, Navigate } from 'react-router'
 import { ProtectedLayout } from './layout/ProtectedLayout'
 import { HomePage } from './pages/HomePage'
@@ -13,6 +14,12 @@ export const router = createBrowserRouter([
   {
     path: '/',
     element: <ProtectedLayout />,
+    // Shown while a lazily loaded screen is fetched on first page load
+    hydrateFallbackElement: (
+      <Center h="100vh">
+        <Loader />
+      </Center>
+    ),
     children: [
       { index: true, element: <HomePage /> },
       // Master / help / admin

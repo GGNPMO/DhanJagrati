@@ -18,15 +18,17 @@ interface Props<T extends { id: number }> {
   columns: SearchColumn<T>[]
   onClose: () => void
   onSelect: (row: T) => void
+  /** Text already typed by the user (re-mount the modal with a new key to change it). */
+  initialSearch?: string
 }
 
-/** Search dialog used by the record screens' "Search" button. */
-export function SearchModal<T extends { id: number }>({ opened, title, url, columns, onClose, onSelect }: Props<T>) {
-  const [search, setSearch] = useState('')
+/** Search dialog used by the record screens' "Search" button and the code pickers. */
+export function SearchModal<T extends { id: number }>({ opened, title, url, columns, onClose, onSelect, initialSearch }: Props<T>) {
+  const [search, setSearch] = useState(initialSearch ?? '')
   const [debounced] = useDebouncedValue(search, 300)
   const result = useQuery({
     queryKey: [url, 'search', debounced],
-    queryFn: () => api.get<T[]>(`${url}${query({ search: debounced })}`),
+    queryFn: () => api.get<T[]>(`${url}${url.includes('?') ? query({ search: debounced }).replace('?', '&') : query({ search: debounced })}`),
     enabled: opened,
   })
 
