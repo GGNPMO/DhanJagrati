@@ -26,13 +26,17 @@ interface Options<TRecord, TForm extends FieldValues> {
 export function useRecordController<TRecord, TForm extends FieldValues>(o: Options<TRecord, TForm>) {
   const navigate = useNavigate()
   const client = useQueryClient()
-  const [mode, setMode] = useState<RecordMode>(o.id ? 'view' : 'new')
+  // Opening the screen shows an empty, read-only form: Search / First / Last are available and
+  // "Add" starts a new record. Moving to another record always returns to view mode.
+  const [mode, setMode] = useState<RecordMode>('view')
   const [loadedId, setLoadedId] = useState(o.id)
+  const [pendingNew, setPendingNew] = useState(false)
 
-  // Moving to another record always returns to view mode (state adjusted during render, not in an effect).
+  // State adjusted during render (not in an effect) when the route's record id changes.
   if (loadedId !== o.id) {
     setLoadedId(o.id)
-    setMode(o.id ? 'view' : 'new')
+    setMode(!o.id && pendingNew ? 'new' : 'view')
+    setPendingNew(false)
   }
 
   const record = useQuery({
@@ -44,8 +48,8 @@ export function useRecordController<TRecord, TForm extends FieldValues>(o: Optio
   const { form, toForm, empty } = o
   useEffect(() => {
     if (mode === 'view' && record.data) form.reset(toForm(record.data))
-    if (mode === 'new') form.reset(empty())
-  }, [mode, record.data, form, toForm, empty])
+    if (mode === 'new' || (mode === 'view' && o.id === null)) form.reset(empty())
+  }, [mode, record.data, form, toForm, empty, o.id])
 
   const save = useMutation({
     mutationFn: async (values: TForm) => {
@@ -100,9 +104,14 @@ export function useRecordController<TRecord, TForm extends FieldValues>(o: Optio
     saving: save.isPending,
     deleting: remove.isPending,
     add: () => {
-      navigate(`/${o.resource}`)
-      setMode('new')
       form.reset(o.empty())
+      if (o.id !== null) {
+        // Leave the record URL first; the id change above then switches to 'new'.
+        setPendingNew(true)
+        navigate(`/${o.resource}`)
+      } else {
+        setMode('new')
+      }
     },
     edit: () => setMode('edit'),
     save: form.handleSubmit((values) => save.mutate(values)),
@@ -111,6 +120,7 @@ export function useRecordController<TRecord, TForm extends FieldValues>(o: Optio
         setMode('view')
         form.reset(o.toForm(record.data))
       } else {
+        setMode('view')
         form.reset(o.empty())
       }
     },

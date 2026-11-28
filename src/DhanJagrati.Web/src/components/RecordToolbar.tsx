@@ -76,7 +76,12 @@ export function RecordToolbar(p: Props) {
           {p.canDelete && (
             <ToolButton label="Delete" icon={<IconTrash size={16} />} color="red" variant="light" disabled={editing || !p.hasRecord || p.editLocked} onClick={p.onDelete} />
           )}
-          <ToolButton label="Search" icon={<IconSearch size={16} />} variant="default" disabled={editing} onClick={p.onSearch} />
+          <ToolButton label="Search" icon={<IconSearch size={16} />} variant={!p.hasRecord && !editing ? 'light' : 'default'} disabled={editing} onClick={p.onSearch} />
+          {!p.hasRecord && !editing && (
+            <Text size="sm" c="dimmed" visibleFrom="sm">
+              Search or use First / Last to open a record{p.canEdit ? ', or Add a new one' : ''}.
+            </Text>
+          )}
         </Group>
         <Group gap={6}>
           {nav('First', <IconChevronsLeft size={16} />)}
