@@ -61,6 +61,18 @@ if (args.Length > 0 && args[0].Equals(CreateAdminCommand.Name, StringComparison.
 
 app.UseExceptionHandler();
 app.UseHardening();
+
+// Single-site hosting: the built React app (src\DhanJagrati.Web\dist copied to wwwroot) is served by the API,
+// so browser and API share one origin. In development Vite serves the UI instead and wwwroot may be empty.
+app.UseDefaultFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = ctx =>
+    {
+        // index.html must never be cached so new releases load immediately; hashed assets can be.
+        ctx.Context.Response.Headers.CacheControl = ctx.File.Name == "index.html" ? "no-cache" : "public,max-age=604800";
+    }
+});
 app.UseStatusCodePages();
 app.UseMiddleware<ClientHeaderMiddleware>();
 app.UseAuthentication();
@@ -86,6 +98,13 @@ app.MapLoanEndpoints();
 app.MapRecoveryEndpoints();
 app.MapAccountEndpoints();
 app.MapLoanReportEndpoints();
+
+// Unknown /api paths stay 404; every other path is a client-side route of the React app.
+app.Map("/api/{**rest}", () => Results.NotFound());
+app.MapFallbackToFile("index.html", new StaticFileOptions
+{
+    OnPrepareResponse = ctx => ctx.Context.Response.Headers.CacheControl = "no-cache"
+});
 
 await app.RunAsync();
 return 0;

@@ -44,8 +44,9 @@ ScaffoldingReadMe.txt
 # Uploaded member photos / signatures, data-protection keys (runtime data)
 App_Data/
 
-# Release package (deploy\publish.ps1)
+# Release package (deploy\publish.ps1) and the built UI copied into the API
 publish/
+src/DhanJagrati.Api/wwwroot/
 
 # Others
 ~$*
